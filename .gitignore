@@ -25,7 +25,7 @@ ENV/
 # -------------------------------
 *.sqlite3
 *.db
-postgres_data/
+data.db
 
 # -------------------------------
 # Build / distribution artifacts
