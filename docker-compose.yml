@@ -1,0 +1,12 @@
+version: "3.9"
+services:
+  web:
+    build: .
+    container_name: flask_csr_web
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+    command: ["gunicorn", "--bind", "0.0.0.0:5000", "app:create_app()"]
