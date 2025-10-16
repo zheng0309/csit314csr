@@ -1,0 +1,24 @@
+# Ensure consistent line endings across systems
+* text=auto eol=lf
+
+# Treat Python, Docker, and shell scripts as text
+*.py text
+*.sh text
+*.yml text
+*.yaml text
+*.md text
+*.html text
+*.css text
+*.js text
+
+# Keep images and binary files untouched
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+
+# Normalize Dockerfile and Compose files
+Dockerfile text eol=lf
+docker-compose.yml text eol=lf
