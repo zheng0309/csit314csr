@@ -46,7 +46,7 @@ jobs:
           DB_NAME: csrdb
           SECRET_KEY: supersecret
         run: |
-          python -m flask --app app:create_app list
+          python -m flask --app app:create_app routes
 
       - name: Build Docker image
         run: |
