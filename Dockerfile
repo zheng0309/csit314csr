@@ -3,13 +3,13 @@ FROM python:3.11-slim
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip && pip install -r requirements.txt
 
-COPY . .
+COPY ./app /app
+COPY entrypoint.sh /app/entrypoint.sh
 
+# ✅ Make script executable inside Docker
 RUN chmod +x /app/entrypoint.sh
 
-ENV FLASK_APP=app
-EXPOSE 5000
-
 ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:create_app()"]

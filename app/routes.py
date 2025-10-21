@@ -1,17 +1,22 @@
-# app/routes.py
 from flask import Blueprint, jsonify
-from app.models import User, PinRequest
+from .models import PinRequest
 
-main = Blueprint("main", __name__)
+bp = Blueprint("main", __name__, url_prefix="/api")
 
-@main.route("/")
+@bp.get("/")
 def index():
-    return jsonify({"message": "CSR Volunteer System is running"})
+    return jsonify({"message": "CSR Volunteer Matching API is running"})
 
-@main.route("/requests")
+@bp.get("/requests")
 def get_requests():
+    requests = PinRequest.query.all()
     data = [
-        {"id": r.id, "title": r.title, "status": r.status}
-        for r in PinRequest.query.limit(10).all()
+        {
+            "id": r.request_id,
+            "title": r.title,
+            "status": r.status,
+            "urgency": r.urgency,
+        }
+        for r in requests
     ]
     return jsonify(data)
