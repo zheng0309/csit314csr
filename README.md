@@ -1,63 +1,61 @@
-# 🧩 CSIT314 Group Project — CSR Volunteer Matching System  
-**Technology Stack:** Python (Flask) · PostgreSQL · Docker · SQLAlchemy · Flask-Migrate
+CSIT314 Group Project — CSR Volunteer Matching System
 
-This repository contains the **Corporate Social Responsibility (CSR) Volunteer Matching System** developed for **CSIT314 – Software Development Methodologies**.  
-The system connects **Corporate Volunteers (CSR Reps)** with **Persons-in-Need (PINs)** and demonstrates Agile, TDD, and CI/CD principles.
+Technology Stack: Python (Flask), PostgreSQL, Docker, SQLAlchemy, Flask-Migrate, GitHub Actions (CI/CD)
 
----
+This repository contains the Corporate Social Responsibility (CSR) Volunteer Matching System developed for CSIT314 – Software Development Methodologies.
+The system connects Corporate Volunteers (CSR Representatives) with Persons-in-Need (PINs) and demonstrates Agile, TDD, and CI/CD practices.
 
-## 📘 Project Overview
+Project Overview
 
-**Main Features**
-- Multi-role support (Admin, CSR Rep, PIN)
-- Manage and track volunteer requests
-- Search and shortlist opportunities
-- Generate sample data (~100 records per entity)
-- Built-in PostgreSQL integration via Docker
-- Ready for CI/CD (GitHub Actions)
+Main Features
 
----
+Multi-role support (Admin, CSR Representative, PIN)
 
-## 🗂️ Folder Structure
+Manage and track volunteer requests
+
+Search and shortlist opportunities
+
+Auto-generate sample data (100+ records)
+
+Integrated PostgreSQL via Docker
+
+pgAdmin web interface for database management
+
+Continuous Integration via GitHub Actions
+
+Folder Structure
 csit314-csr-flask/
 │
-├── app/ # Flask application package
-│ ├── init.py # App factory (creates Flask app)
-│ ├── database.py # Database + migrations setup
-│ ├── models.py # ORM models (User, PinRequest)
-│ ├── routes.py # API routes / endpoints
-│ ├── seed_data.py # Generates 100+ test records
-│ ├── templates/ # (Optional) HTML templates
-│ └── static/ # (Optional) CSS / JS files
+├── app/                      # Flask application package
+│   ├── __init__.py           # App factory (creates Flask app)
+│   ├── models.py             # ORM models (User, PinRequest)
+│   ├── routes.py             # API routes / endpoints
+│   ├── seed_data.py          # Script to seed 100+ test records
+│   ├── templates/            # (Optional) HTML templates
+│   └── static/               # (Optional) CSS / JS files
 │
-├── migrations/ # Created by Flask-Migrate
-├── Dockerfile # Flask app image definition
-├── docker-compose.yml # Runs Flask + PostgreSQL
-├── entrypoint.sh # Waits for DB, runs migrations, seeds data
-├── requirements.txt # Python dependencies
-├── .env # Local environment variables (not committed)
-├── .env.example # Template env file for teammates
-├── .gitignore # Ignore secrets, caches, DB data
-├── .gitattributes # Normalize line endings across OSes
-└── README.md # This file
+├── migrations/               # Database migrations (Flask-Migrate)
+├── Dockerfile                # Flask app Docker image
+├── docker-compose.yml        # Runs Flask, PostgreSQL, and pgAdmin
+├── entrypoint.sh             # Waits for DB, applies migrations, seeds data
+├── requirements.txt          # Python dependencies
+├── .env                      # Environment variables (not committed)
+├── .env.example              # Template environment file for teammates
+├── .gitignore                # Ignore secrets, caches, and DB data
+├── .gitattributes            # Normalize line endings across OSes
+└── README.md                 # This file
 
-
----
-
-## ⚙️ Setup Instructions
-
-### 🐳 Option 1 – Run with Docker (Recommended)
-
-#### 1️⃣ Clone the repository
-```bash
-git clone https://github.com/👉<your-username>/csit314-csr-flask.git
+Setup Instructions
+Option 1 – Run with Docker (Recommended)
+Step 1. Clone the repository
+git clone https://github.com/<your-username>/csit314-csr-flask.git
 cd csit314-csr-flask
 
-2️⃣ Copy the environment file
+Step 2. Create and configure the environment file
 cp .env.example .env
 
 
-Edit .env if needed:
+Edit .env and verify the following values:
 
 DB_HOST=db
 DB_PORT=5432
@@ -65,36 +63,86 @@ DB_USER=csruser
 DB_PASS=csrpass
 DB_NAME=csrdb
 SECRET_KEY=supersecretkey
+FLASK_ENV=development
 
-3️⃣ Build and start the containers
-docker-compose up --build
+Step 3. Build and start the containers
+docker compose up --build
 
 
 This will:
 
 Build the Flask image
 
-Start PostgreSQL
+Start the PostgreSQL and pgAdmin containers
 
-Wait for DB readiness
+Wait for the database to become ready
 
-Apply migrations
+Apply database migrations
 
 Generate 100+ test records
 
-Run Gunicorn at port 5000
+Run the Flask app on port 5000
 
-4️⃣ Access the app
+Step 4. Access the application
 
-Open your browser:
+Flask API: http://localhost:5000/
 
-http://localhost:5000/
+pgAdmin (database UI): http://localhost:5050/
+
+pgAdmin login credentials:
+
+Email: admin@csr.com
+Password: admin123
 
 
-Endpoints
+To connect pgAdmin to your database:
 
+Host: db
+
+Port: 5432
+
+Username: csruser
+
+Password: csrpass
+
+API Endpoints
 URL	Description
-/	Health check
+/	Health check endpoint
 /requests	View sample volunteer requests
-5️⃣ Stop the app
-docker-compose down
+Stopping the Application
+
+To stop all containers:
+
+docker compose down
+
+
+To remove all volumes and rebuild fresh:
+
+docker compose down -v
+docker compose up --build
+
+Continuous Integration (CI/CD)
+
+This project uses GitHub Actions to automatically:
+
+Build and test the Flask app
+
+Validate PostgreSQL connectivity
+
+Build the Docker image
+
+Workflow file: .github/workflows/ci.yml
+
+Every push or pull request to the main branch triggers the CI pipeline.
+You can view the results under the Actions tab in GitHub.
+
+Development Notes
+
+Run migrations manually (if needed):
+
+docker compose exec web flask db upgrade
+
+
+Seed data manually:
+
+docker compose exec web python -m app.seed_data
