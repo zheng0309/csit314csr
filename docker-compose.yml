@@ -12,14 +12,26 @@ services:
 
   db:
     image: postgres:15
-    container_name: csr_db
-    restart: unless-stopped
     environment:
-      POSTGRES_USER: csruser
-      POSTGRES_PASSWORD: csrpass
-      POSTGRES_DB: csrdb
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - csr_db_data:/var/lib/postgresql/data
+volumes:
+  csr_db_data:
+  # db:
+  #   image: postgres:15
+  #   container_name: csr_db
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_USER: csruser
+  #     POSTGRES_PASSWORD: csrpass
+  #     POSTGRES_DB: csrdb
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
   pgadmin:
     image: dpage/pgadmin4
     container_name: csr_pgadmin
