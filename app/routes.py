@@ -1,3 +1,4 @@
+# app/routes.py
 from flask import Blueprint, jsonify
 from app.models import User, PinRequest
 
@@ -9,12 +10,8 @@ def index():
 
 @main.route("/requests")
 def get_requests():
-    requests = PinRequest.query.all()
-    data = [{"id": r.id, "title": r.title, "status": r.status} for r in requests]
-    return jsonify(data)
-
-@main.route("/users")
-def get_users():
-    users = User.query.all()
-    data = [{"id": u.id, "name": u.name, "role": u.role} for u in users]
+    data = [
+        {"id": r.id, "title": r.title, "status": r.status}
+        for r in PinRequest.query.limit(10).all()
+    ]
     return jsonify(data)
