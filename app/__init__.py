@@ -1,30 +1,31 @@
-# app/__init__.py
-from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
 import os
-
-db = SQLAlchemy()
-migrate = Migrate()
+from flask import Flask
+from dotenv import load_dotenv  
+from app.database import init_db, db
+from app.models import *
 
 def create_app():
+    #  Load .env variables before config
+    load_dotenv()
+
     app = Flask(__name__)
 
-    # Database config
-    app.config["SQLALCHEMY_DATABASE_URI"] = (
-        f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASS')}"
-        f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+    #  PostgreSQL connection using .env values
+    app.config['SQLALCHEMY_DATABASE_URI'] = (
+        f"postgresql://{os.getenv('DB_USER', 'csruser')}:"
+        f"{os.getenv('DB_PASS', 'csrpass')}@"
+        f"{os.getenv('DB_HOST', 'db')}:"
+        f"{os.getenv('DB_PORT', 5432)}/"
+        f"{os.getenv('DB_NAME', 'csrdb')}"
     )
-    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-    app.secret_key = os.getenv("SECRET_KEY", "defaultsecret")
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'supersecretkey')
 
-    db.init_app(app)
-    migrate.init_app(app, db)
+    #  Initialize the database
+    init_db(app)
 
-    # Import routes AFTER db init
+    # Register blueprints
     from app.routes import main
     app.register_blueprint(main)
 
     return app
-
-

@@ -18,7 +18,7 @@ ENV/
 # -------------------------------
 .env
 .env.*
-!*.example   # Keep safe example files like .env.example
+!*.example  # Keep safe example files like .env.example
 
 # -------------------------------
 # Databases & generated data
@@ -26,6 +26,11 @@ ENV/
 *.sqlite3
 *.db
 data.db
+pgdata/
+postgres_data/
+csr_db_data/
+*.sql
+*.dump
 
 # -------------------------------
 # Build / distribution artifacts
@@ -59,3 +64,4 @@ Thumbs.db
 *.seed
 *.bak
 *.swp
+docker-compose.override.yml
