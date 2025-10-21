@@ -1,13 +1,12 @@
 #!/bin/sh
-# entrypoint.sh for Flask + SQLite
-set -e
+echo " Waiting for PostgreSQL to start..."
+sleep 5
 
-echo "Applying migrations..."
-# If migrations folder doesn't exist, `flask db init` will be run automatically by migrate commands below when needed
-flask db upgrade || (flask db init && flask db migrate && flask db upgrade)
+echo " Running migrations..."
+flask db upgrade || flask db init && flask db migrate && flask db upgrade
 
-echo "Seeding test data..."
+echo " Seeding data..."
 python -m app.seed_data
 
 echo "Starting Flask app..."
-exec "$@"
+exec gunicorn -b 0.0.0.0:5000 "app:create_app()"

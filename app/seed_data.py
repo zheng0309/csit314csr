@@ -1,38 +1,28 @@
-# app/seed_data.py
 from faker import Faker
-from .database import db
-from .models import User, PinRequest
-from app import create_app
-import random
+from app import create_app, db
+from app.models import User, PinRequest
+
+fake = Faker()
 
 def seed():
     app = create_app()
     with app.app_context():
-        if User.query.count() > 0:
-            print("Database already seeded.")
-            return
-        fake = Faker()
-        pins = []
-        for i in range(100):
-            u = User(username=f"pin{i}", role="pin")
-            db.session.add(u)
-            pins.append(u)
-        for i in range(50):
-            csr = User(username=f"csr{i}", role="csr", company=fake.company())
-            db.session.add(csr)
+        db.drop_all()
+        db.create_all()
+
+        users = [User(name=fake.name(), role=fake.random_element(["CSR", "PIN"])) for _ in range(50)]
+        requests = [
+            PinRequest(
+                title=fake.sentence(nb_words=5),
+                description=fake.text(max_nb_chars=200),
+                status=fake.random_element(["Pending", "Approved", "Completed"])
+            )
+            for _ in range(100)
+        ]
+
+        db.session.add_all(users + requests)
         db.session.commit()
-        for pin in pins:
-            for _ in range(2):
-                r = PinRequest(
-                    title=fake.sentence(nb_words=6),
-                    description=fake.paragraph(nb_sentences=2),
-                    pin_id=pin.id,
-                    views=random.randint(0, 50),
-                    shortlisted_count=random.randint(0, 10),
-                )
-                db.session.add(r)
-        db.session.commit()
-        print("Seed complete: 100 PINs, 50 CSRs, 200 requests")
+        print("✅ Seeded 50 users and 100 requests.")
 
 if __name__ == "__main__":
     seed()
