@@ -146,3 +146,5 @@ docker compose exec web flask db upgrade
 Seed data manually:
 
 docker compose exec web python -m app.seed_data
+
+..
