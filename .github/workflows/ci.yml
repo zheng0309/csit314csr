@@ -1,0 +1,53 @@
+name: CI - CSR Volunteer Flask App
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: csruser
+          POSTGRES_PASSWORD: csrpass
+          POSTGRES_DB: csrdb
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U csruser"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run Flask app import check
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: csruser
+          DB_PASS: csrpass
+          DB_NAME: csrdb
+          SECRET_KEY: supersecret
+        run: |
+          python -m flask --app app:create_app list
+
+      - name: Build Docker image
+        run: |
+          docker build -t csr-flask-app .
