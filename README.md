@@ -68,6 +68,7 @@ FLASK_ENV=development
 Step 3. Build and start the containers
 docker compose up --build
 
+Step 4. python3 -m seed_data.py to seed test data
 
 This will:
 
@@ -79,7 +80,6 @@ Wait for the database to become ready
 
 Apply database migrations
 
-Generate 100+ test records
 
 Run the Flask app on port 5000
 
