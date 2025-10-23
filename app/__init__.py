@@ -1,5 +1,6 @@
 import os
 from flask import Flask
+from flask_cors import CORS
 from dotenv import load_dotenv  
 from app.database import init_db, db
 from app.models import *
@@ -20,6 +21,9 @@ def create_app():
     )
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'supersecretkey')
+
+    #  Enable CORS for frontend
+    CORS(app)
 
     #  Initialize the database
     init_db(app)
