@@ -49,7 +49,7 @@ Setup Instructions
 Option 1 – Run with Docker (Recommended)
 Step 1. Clone the repository
 git clone https://github.com/zheng0309/csit314-csr-flask.git
-cd csit314-csr-flask
+
 
 Step 2. Create and configure the environment file
 cp .env.example .env
