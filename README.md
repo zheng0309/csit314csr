@@ -1,61 +1,92 @@
-CSIT314 Group Project — CSR Volunteer Matching System
+# 🏢 CSIT314 Group Project — CSR Volunteer Matching System
 
-Technology Stack: Python (Flask), PostgreSQL, Docker, SQLAlchemy, Flask-Migrate, GitHub Actions (CI/CD)
+## 🌐 Full-Stack Corporate Social Responsibility Platform
 
-This repository contains the Corporate Social Responsibility (CSR) Volunteer Matching System developed for CSIT314 – Software Development Methodologies.
-The system connects Corporate Volunteers (CSR Representatives) with Persons-in-Need (PINs) and demonstrates Agile, TDD, and CI/CD practices.
+### **Technology Stack**
+- **Frontend:** React (Node.js, npm, Vite)
+- **Backend:** Python (Flask, SQLAlchemy, Flask-Migrate)
+- **Database:** PostgreSQL (via Docker)
+- **CI/CD:** GitHub Actions
+- **Containerization:** Docker & Docker Compose
 
-Project Overview
+---
 
-Main Features
+## 📘 Project Overview
 
-Multi-role support (Admin, CSR Representative, PIN)
+This repository contains the **Corporate Social Responsibility (CSR) Volunteer Matching System** developed for **CSIT314 – Software Development Methodologies**.
 
-Manage and track volunteer requests
+The system connects **Corporate Volunteers (CSR Representatives)** with **Persons-in-Need (PINs)** and demonstrates **Agile**, **Test-Driven Development (TDD)**, and **Continuous Integration/Continuous Deployment (CI/CD)** practices.
 
-Search and shortlist opportunities
+---
 
-Auto-generate sample data (100+ records)
+## 🚀 Main Features
 
-Integrated PostgreSQL via Docker
+### 🧩 Core System
+- Multi-role support (**Admin**, **CSR Representative**, **PIN**)
+- Manage and track volunteer requests
+- Search and shortlist volunteer opportunities
+- Auto-generate 100+ sample data records
+- Integrated PostgreSQL with **pgAdmin** web UI
+- RESTful API built with Flask
+- Continuous Integration with **GitHub Actions**
 
-pgAdmin web interface for database management
+### 💻 Frontend Additions
+- Built with **React + Vite**
+- Responsive and modern UI (using TailwindCSS)
+- Interacts with Flask backend via REST API
+- Environment-based configuration for API URL
+- Production build handled via `npm run build`
+- Included in Docker Compose for one-command startup
 
-Continuous Integration via GitHub Actions
+---
 
-Folder Structure
-csit314-csr-flask/
+## 🗂️ Folder Structure
+csit314-csr/
 │
-├── app/                      # Flask application package
-│   ├── __init__.py           # App factory (creates Flask app)
-│   ├── models.py             # ORM models (User, PinRequest)
-│   ├── routes.py             # API routes / endpoints
-│   ├── seed_data.py          # Script to seed 100+ test records
-│   ├── templates/            # (Optional) HTML templates
-│   └── static/               # (Optional) CSS / JS files
+├── app/ # Flask backend
+│ ├── init.py # App factory
+│ ├── models.py # ORM models (User, PinRequest)
+│ ├── routes.py # API endpoints
+│ ├── seed_data.py # Script to seed test data
+│ ├── templates/ # Optional HTML templates
+│ └── static/ # Optional static files
 │
-├── migrations/               # Database migrations (Flask-Migrate)
-├── Dockerfile                # Flask app Docker image
-├── docker-compose.yml        # Runs Flask, PostgreSQL, and pgAdmin
-├── entrypoint.sh             # Waits for DB, applies migrations, seeds data
-├── requirements.txt          # Python dependencies
-├── .env                      # Environment variables (not committed)
-├── .env.example              # Template environment file for teammates
-├── .gitignore                # Ignore secrets, caches, and DB data
-├── .gitattributes            # Normalize line endings across OSes
-└── README.md                 # This file
+├── frontend/ # React frontend
+│ ├── src/
+│ │ ├── components/ # UI components
+│ │ ├── pages/ # Views / pages
+│ │ ├── services/ # API integration
+│ │ └── App.jsx
+│ ├── package.json # npm dependencies
+│ ├── vite.config.js # Vite configuration
+│ └── .env.example # Frontend API URL template
+│
+├── migrations/ # Database migrations
+├── docker-compose.yml # Runs Flask, PostgreSQL, pgAdmin, and Frontend
+├── Dockerfile # Backend Dockerfile
+├── Dockerfile.frontend # (optional) Frontend Dockerfile
+├── entrypoint.sh # Startup script for backend
+├── requirements.txt # Python dependencies
+├── .env # Environment variables
+├── .env.example # Template environment file
+└── README.md # This file
 
-Setup Instructions
-Option 1 – Run with Docker (Recommended)
-Step 1. Clone the repository
-git clone https://github.com/zheng0309/csit314-csr-flask.git
 
 
-Step 2. Create and configure the environment file
+## ⚙️ Setup Instructions
+
+### **Option 1 – Run with Docker (Recommended)**
+
+#### Step 1. Clone the repository
+
+git clone https://github.com/zheng0309/csit314csr.git
+cd csit314csr
+
+## Step 2. Create environment file
+
 cp .env.example .env
 
-
-Edit .env and verify the following values:
+## Edit .env and verify values such as:
 
 DB_HOST=db
 DB_PORT=5432
@@ -65,86 +96,106 @@ DB_NAME=csrdb
 SECRET_KEY=supersecretkey
 FLASK_ENV=development
 
-Step 3. Build and start the containers
+#### Step 3. Build and start the containers
+
 docker compose up --build
 
 
-This will:
+#### Step 4. Access the application
+| Service                 | URL                                            | Description         |
+| ----------------------- | ---------------------------------------------- | ------------------- |
+| **Frontend (React)**    | [http://localhost:5173](http://localhost:5173) | User interface      |
+| **Flask API (Backend)** | [http://localhost:5000](http://localhost:5000) | REST API            |
+| **pgAdmin**             | [http://localhost:5050](http://localhost:5050) | Database management |
 
-Build the Flask image
 
-Start the PostgreSQL and pgAdmin containers
-
-Wait for the database to become ready
-
-Apply database migrations
-
-Generate 100+ test records
-
-Run the Flask app on port 5000
-
-Step 4. Access the application
-
-Flask API: http://localhost:5000/
-
-pgAdmin (database UI): http://localhost:5050/
-
-pgAdmin login credentials:
-
+## pgAdmin login credentials:
 Email: admin@csr.com
 Password: admin123
 
-
-To connect pgAdmin to your database:
-
+## Database connection details:
 Host: db
-
 Port: 5432
-
 Username: csruser
-
 Password: csrpass
 
-API Endpoints
-URL	Description
-/	Health check endpoint
-/requests	View sample volunteer requests
-Stopping the Application
+## Option 2 – Run Locally (Development Mode) **
 
-To stop all containers:
+## Backend: 
+# From project root
+cd app
+python -m venv venv
+source venv/bin/activate   # or venv\Scripts\activate on Windows
+pip install -r requirements.txt
+flask db upgrade
+python -m app.seed_data
+flask run
 
-docker compose down
+Runs at: http://localhost:5000
+
+## Frontend: 
+cd frontend
+npm install
+npm run dev
+Runs at: http://localhost:5173
+
+## To build production: 
+npm run build
 
 
-To remove all volumes and rebuild fresh:
 
-docker compose down -v
-docker compose up --build
-
-Continuous Integration (CI/CD)
+## 🧪 Continuous Integration (CI/CD)
 
 This project uses GitHub Actions to automatically:
 
-Build and test the Flask app
+Lint and test the Flask backend
 
 Validate PostgreSQL connectivity
 
-Build the Docker image
+Build Docker images for backend and frontend
+
+Run API integration tests
 
 Workflow file: .github/workflows/ci.yml
 
-Every push or pull request to the main branch triggers the CI pipeline.
-You can view the results under the Actions tab in GitHub.
+Each push or pull request to the main branch triggers the CI pipeline.
+View results under the Actions tab in GitHub.
 
-Development Notes
 
-Run migrations manually (if needed):
+## 🛠️ Development Commands
+
+Run database migrations manually:
 
 docker compose exec web flask db upgrade
 
 
-Seed data manually:
+ ## Seed data manually:
 
 docker compose exec web python -m app.seed_data
 
-..
+
+## Rebuild from scratch:
+
+docker compose down -v
+docker compose up --build
+
+
+## Frontend scripts:
+
+npm run dev      # Run dev server
+npm run build    # Build for production
+npm run preview  # Preview production build
+
+## 🔧 Environment Variables
+Backend .env
+DB_HOST=db
+DB_PORT=5432
+DB_USER=csruser
+DB_PASS=csrpass
+DB_NAME=csrdb
+SECRET_KEY=supersecretkey
+FLASK_ENV=development
+
+Frontend .env
+VITE_API_URL=http://localhost:5000
+
