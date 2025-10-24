@@ -80,6 +80,7 @@ csit314-csr/
 #### Step 1. Clone the repository
 
 git clone https://github.com/zheng0309/csit314csr.git
+
 cd csit314csr
 
 ## Step 2. Create environment file
