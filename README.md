@@ -1,150 +1,107 @@
-CSIT314 Group Project — CSR Volunteer Matching System
+# CSIT314 CSR Assistance Platform
 
-Technology Stack: Python (Flask), PostgreSQL, Docker, SQLAlchemy, Flask-Migrate, GitHub Actions (CI/CD)
+This project provides a Community Support Request (CSR) system where Public Individuals in Need (PINs) can request help and Customer Support Representatives (CSRs) can respond to assist them. The system uses Flask (Python) for backend, React for frontend, and PostgreSQL as the database, all containerized with Docker.
 
-This repository contains the Corporate Social Responsibility (CSR) Volunteer Matching System developed for CSIT314 – Software Development Methodologies.
-The system connects Corporate Volunteers (CSR Representatives) with Persons-in-Need (PINs) and demonstrates Agile, TDD, and CI/CD practices.
+##  Setup Instructions
 
-Project Overview
+### Run with Docker (Recommended)
 
-Main Features
+1. Clone the repository
+   git clone https://github.com/<your-username>/csit314-csr-flask.git
+   cd csit314-csr-flask
 
-Multi-role support (Admin, CSR Representative, PIN)
+2. Configure environment variables  
+   Copy the template file and edit if needed  
+   cp .env.example .env
 
-Manage and track volunteer requests
+   Verify these values:
+   DB_HOST=db  
+   DB_PORT=5432  
+   DB_USER=postgres  
+   DB_PASS=postgres  
+   DB_NAME=csrdb  
+   SECRET_KEY=supersecretkey  
+   FLASK_ENV=development
 
-Search and shortlist opportunities
+3. Build and start all containers  
+   docker-compose up -d --build
 
-Auto-generate sample data (100+ records)
+   This will:
+   - Build the Flask backend
+   - Start PostgreSQL and pgAdmin
+   - Wait until the database is healthy
+   - Run Flask at http://localhost:5070
+   - Expose pgAdmin at http://localhost:5050
 
-Integrated PostgreSQL via Docker
+   pgAdmin login:
+   Email: admin@csr.com  
+   Password: admin123
 
-pgAdmin web interface for database management
+   Database connection inside pgAdmin:
+   Host: db  
+   Port: 5432  
+   Username: postgres  
+   Password: postgres  
+   Database: csrdb
 
-Continuous Integration via GitHub Actions
+## Restoring the Team Seed Data
 
-Folder Structure
-csit314-csr-flask/
-│
-├── app/                      # Flask application package
-│   ├── __init__.py           # App factory (creates Flask app)
-│   ├── models.py             # ORM models (User, PinRequest)
-│   ├── routes.py             # API routes / endpoints
-│   ├── seed_data.py          # Script to seed 100+ test records
-│   ├── templates/            # (Optional) HTML templates
-│   └── static/               # (Optional) CSS / JS files
-│
-├── migrations/               # Database migrations (Flask-Migrate)
-├── Dockerfile                # Flask app Docker image
-├── docker-compose.yml        # Runs Flask, PostgreSQL, and pgAdmin
-├── entrypoint.sh             # Waits for DB, applies migrations, seeds data
-├── requirements.txt          # Python dependencies
-├── .env                      # Environment variables (not committed)
-├── .env.example              # Template environment file for teammates
-├── .gitignore                # Ignore secrets, caches, and DB data
-├── .gitattributes            # Normalize line endings across OSes
-└── README.md                 # This file
+The shared test dataset is stored in:
+   /db/seed_data.sql
 
-Setup Instructions
-Option 1 – Run with Docker (Recommended)
-Step 1. Clone the repository
-git clone https://github.com/<your-username>/csit314-csr-flask.git
-cd csit314-csr-flask
-
-Step 2. Create and configure the environment file
-cp .env.example .env
-
-
-Edit .env and verify the following values:
-
-DB_HOST=db
-DB_PORT=5432
-DB_USER=csruser
-DB_PASS=csrpass
-DB_NAME=csrdb
-SECRET_KEY=supersecretkey
-FLASK_ENV=development
-
-Step 3. Build and start the containers
-docker compose up --build
-
-Step 4. python3 -m seed_data.py to seed test data
+To import after containers are running:
+   docker exec -i db psql -U postgres -d csrdb < db/seed_data.sql
 
 This will:
+   - Create all 6 tables (users, categories, pin_requests, match_history, etc.)
+   - Insert all test data (users, PIN requests, and matches)
+   - Apply all foreign key relationships
 
-Build the Flask image
+To confirm the data:
+   docker exec -it db psql -U postgres -d csrdb
+   \dt
+   SELECT COUNT(*) FROM pin_requests;
 
-Start the PostgreSQL and pgAdmin containers
+## Backing Up Your Data
 
-Wait for the database to become ready
+Before stopping or rebuilding containers, create a backup:
+   docker exec -t db pg_dump -U postgres csrdb > backup_$(date +%F).sql
 
-Apply database migrations
+To restore from a backup:
+   docker exec -i db psql -U postgres -d csrdb < backup_YYYY-MM-DD.sql
 
+## Stopping and Restarting
 
-Run the Flask app on port 5000
+Stop containers (data remains safe):
+   docker-compose down
 
-Step 4. Access the application
+Restart later:
+   docker-compose up -d
 
-Flask API: http://localhost:5000/
+⚠️ Never use -v unless you intend to delete the database:
+   docker-compose down -v
 
-pgAdmin (database UI): http://localhost:5050/
+## 🔍 Useful Development Commands
 
-pgAdmin login credentials:
+Run migrations:
+   docker-compose exec web flask db upgrade
 
-Email: admin@csr.com
-Password: admin123
+Reseed database manually:
+   docker exec -i db psql -U postgres -d csrdb < db/seed_data.sql
 
+View running containers:
+   docker ps
 
-To connect pgAdmin to your database:
+Access Flask logs:
+   docker-compose logs -f web
 
-Host: db
-
-Port: 5432
-
-Username: csruser
-
-Password: csrpass
-
-API Endpoints
-URL	Description
-/	Health check endpoint
-/requests	View sample volunteer requests
-Stopping the Application
-
-To stop all containers:
-
-docker compose down
-
-
-To remove all volumes and rebuild fresh:
-
-docker compose down -v
-docker compose up --build
-
-Continuous Integration (CI/CD)
-
-This project uses GitHub Actions to automatically:
-
-Build and test the Flask app
-
-Validate PostgreSQL connectivity
-
-Build the Docker image
-
-Workflow file: .github/workflows/ci.yml
-
-Every push or pull request to the main branch triggers the CI pipeline.
-You can view the results under the Actions tab in GitHub.
-
-Development Notes
-
-Run migrations manually (if needed):
-
-docker compose exec web flask db upgrade
+Open PostgreSQL shell:
+   docker exec -it db psql -U postgres -d csrdb
 
 
-Seed data manually:
+- Docker volume "postgres_data" keeps all data persistent between rebuilds.
+- seed_data.sql includes 200+ users, 100 PIN requests, and all relationships.
+- Every teammate can clone, seed, and use the same database easily.
+- No binary database files are committed—only the portable .sql dump.
 
-docker compose exec web python -m app.seed_data
 
-..

@@ -1,40 +1,32 @@
 import os
 from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
-from .database import db, migrate
-from .routes import bp as main_bp
+from flask_migrate import Migrate
+migrate = Migrate()
+# Single shared SQLAlchemy instance
+db = SQLAlchemy()
 
 def create_app():
-    """Flask application factory."""
     app = Flask(__name__)
-
-    # Prefer Postgres from env; fallback to SQLite for dev
-    POSTGRES_USER = os.getenv("POSTGRES_USER")
-    POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
-    POSTGRES_DB = os.getenv("POSTGRES_DB")
-    POSTGRES_HOST = os.getenv("POSTGRES_HOST", "db")
-    POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
-
-    if all([POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, POSTGRES_HOST]):
-        app.config["SQLALCHEMY_DATABASE_URI"] = (
-            f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}"
-            f"@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
-        )
-    else:
-        db_path = os.getenv("DB_PATH", "data.db")
-        app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
-
-    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret")
-
-    db.init_app(app)
-    migrate.init_app(app, db)
     CORS(app)
 
-    app.register_blueprint(main_bp)
+    # ✅ Load environment variable safely (default if missing)
+    database_uri = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@db:5432/csrdb")
+    app.config["SQLALCHEMY_DATABASE_URI"] = database_uri
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-    @app.get("/health")
-    def health():
-        return {"status": "ok", "database": str(db.engine.url)}
+    # ✅ Initialize SQLAlchemy with Flask app
+    db.init_app(app)
+    migrate.init_app(app, db)
 
+    # Import models & routes AFTER db.init_app
+    from app import models, routes
+    app.register_blueprint(routes.bp)
+
+    # ✅ Create tables automatically
+    with app.app_context():
+        db.create_all()
+
+    print(f"✅ Connected to database: {app.config['SQLALCHEMY_DATABASE_URI']}")
     return app

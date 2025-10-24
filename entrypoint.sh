@@ -1,8 +1,18 @@
-#!/bin/sh
+#!/usr/bin/env sh
 set -e
 
-echo "🧱 Running migrations..."
-flask db upgrade || (flask db init && flask db migrate && flask db upgrade)
+echo "⏳ Waiting for database..."
+# Optional: rely on compose healthcheck instead if you prefer
+sleep 2
+
+echo "🧱 Ensuring schema with SQLAlchemy (db.create_all)..."
+python - <<'PY'
+from app import create_app, db
+app = create_app()
+with app.app_context():
+    db.create_all()
+    print("✅ Tables ensured with db.create_all()")
+PY
 
 echo "🚀 Starting Flask app..."
-exec gunicorn --timeout 300 -b 0.0.0.0:5000 "app:create_app()"
+exec flask run --host=0.0.0.0 --port=5000
