@@ -105,7 +105,7 @@ docker compose up --build
 #### Step 4. Access the application
 | Service                 | URL                                            | Description         |
 | ----------------------- | ---------------------------------------------- | ------------------- |
-| **Frontend (React)**    | [http://localhost:5173](http://localhost:5173) | User interface      |
+| **Frontend (React)**    | [http://localhost:5173](http://localhost:3000) | User interface      |
 | **Flask API (Backend)** | [http://localhost:5000](http://localhost:5000) | REST API            |
 | **pgAdmin**             | [http://localhost:5050](http://localhost:5050) | Database management |
 
@@ -137,8 +137,8 @@ Runs at: http://localhost:5000
 ## Frontend: 
 cd frontend
 npm install
-npm run dev
-Runs at: http://localhost:5173
+npm start
+Runs at: http://localhost:3000
 
 ## To build production: 
 npm run build
