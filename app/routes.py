@@ -1,17 +1,42 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 from app.database import db
 from app.models import User, PinRequest
 
-# Create a Flask Blueprint
 main = Blueprint('main', __name__)
 
-# Health check endpoint (simple)
 @main.route('/')
 def health_check():
     return jsonify({"message": "CSR Volunteer System is running"}), 200
 
+# -------------------------------
+# 🧾 PIN Login Endpoint
+# -------------------------------
+@main.route('/api/login', methods=['POST'])
+def login():
+    data = request.get_json()
 
-# Example endpoint: View all volunteer requests
+    if not data or not data.get('email') or not data.get('password'):
+        return jsonify({"error": "Email and password required"}), 400
+
+    user = User.query.filter_by(email=data['email'], password=data['password']).first()
+
+    if not user:
+        return jsonify({"error": "Invalid credentials"}), 401
+
+    if user.role != "PIN":
+        return jsonify({"error": "Only PIN users can log in here"}), 403
+
+    return jsonify({
+        "message": "Login successful",
+        "user": {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "role": user.role
+        }
+    }), 200
+
+# Example: list all requests
 @main.route('/requests')
 def get_requests():
     requests = PinRequest.query.all()
@@ -26,8 +51,6 @@ def get_requests():
     ]
     return jsonify(results), 200
 
-
-# Example endpoint: View all users (optional)
 @main.route('/users')
 def get_users():
     users = User.query.all()

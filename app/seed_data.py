@@ -8,15 +8,22 @@ with app.app_context():
     db.create_all()
 
     if not User.query.first():
-        for i in range(10):
-            user = User(name=f"User {i+1}", role="CSR Rep", email=f"user{i+1}@mail.com")
+        # Add sample CSR users
+        for i in range(5):
+            user = User(name=f"CSR User {i+1}", role="CSR Rep", email=f"csr{i+1}@mail.com", password="csrpass")
             db.session.add(user)
 
-        for i in range(100):
-            req = PinRequest(title=f"Request {i+1}", description="Sample request")
+        # Add sample PIN users
+        for i in range(3):
+            pin_user = User(name=f"PIN User {i+1}", role="PIN", email=f"pin{i+1}@mail.com", password="pinpass")
+            db.session.add(pin_user)
+
+        # Add sample requests
+        for i in range(10):
+            req = PinRequest(title=f"Request {i+1}", description="Sample help request", status="Open")
             db.session.add(req)
 
         db.session.commit()
-        print(" Seeded test data.")
+        print("✅ Seeded test data.")
     else:
-        print(" Data already exists.")
+        print("⚠️ Data already exists.")
