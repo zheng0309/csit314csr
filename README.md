@@ -120,7 +120,7 @@ Port: 5432
 Username: csruser
 Password: csrpass
 
-## Option 2 – Run Locally (Development Mode) **
+
 
 ## Backend: 
 # From project root
