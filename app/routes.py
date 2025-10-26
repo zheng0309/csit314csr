@@ -1,6 +1,16 @@
+print("routes.py loaded")   # <-- add this at the top
+
 from flask import Blueprint, jsonify, request
 from app.database import db
 from app.models import User, PinRequest
+
+main = Blueprint('main', __name__)
+
+
+from flask import Blueprint, jsonify, request
+from app.database import db
+from app.models import User, PinRequest
+
 
 main = Blueprint('main', __name__)
 
@@ -36,13 +46,13 @@ def login():
         }
     }), 200
 
-# Example: list all requests
+# List all requests
 @main.route('/requests')
 def get_requests():
     requests = PinRequest.query.all()
     results = [
         {
-            "id": req.id,
+            "id": req.request_id,
             "title": req.title,
             "description": req.description,
             "status": req.status,
@@ -64,3 +74,34 @@ def get_users():
         for u in users
     ]
     return jsonify(results), 200
+
+# -------------------------------
+# Create a New Help Request
+# -------------------------------
+@main.route('/api/help-requests', methods=['POST'])
+def create_help_request():
+    data = request.get_json()
+
+    # Validate required fields
+    if not data or not data.get('title') or not data.get('description'):
+        return jsonify({"error": "Title and description are required"}), 400
+
+    # Create new help request
+    new_request = PinRequest(
+        title=data['title'],
+        description=data['description'],
+        category=data.get('category'),
+        priority=data.get('priority'),
+        status="Open",
+        pin_id=data.get('pin_id') 
+    )
+
+    db.session.add(new_request)
+    db.session.commit()
+
+    return jsonify({
+        "message": "Help request created successfully",
+        "id": new_request.request_id
+    }), 201
+
+
