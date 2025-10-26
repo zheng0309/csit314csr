@@ -129,8 +129,10 @@ python -m venv venv
 source venv/bin/activate   # or venv\Scripts\activate on Windows
 pip install -r requirements.txt
 flask db upgrade
-python -m app.seed_data
 flask run
+
+# Seed 100 testcases
+docker exec -i csr_db psql -U csruser -d csrdb < seed_data.sql
 
 Runs at: http://localhost:5000
 
