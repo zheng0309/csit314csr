@@ -73,18 +73,19 @@ def get_users():
 def create_help_request():
     data = request.get_json()
 
-    # Validate required fields
-    if not data or not data.get('title') or not data.get('description'):
-        return jsonify({"error": "Title and description are required"}), 400
+    # ✅ Validate required fields
+    if not data or not data.get('title') or not data.get('description') or not data.get('user_id'):
+        return jsonify({"error": "Title, description, and user_id are required"}), 400
 
-    # Create new help request
+    # ✅ Create new help request
     new_request = PinRequest(
         title=data['title'],
         description=data['description'],
-        category=data.get('category'),
-        priority=data.get('priority'),
-        status="Open",
-        pin_id=data.get('pin_id') 
+        user_id=data['user_id'],                 
+        category_id=data.get('category_id'),     # Optional
+        urgency=data.get('urgency', 'medium'),   
+        location=data.get('location'),           # Optional
+        status='open'                            
     )
 
     db.session.add(new_request)
@@ -92,7 +93,15 @@ def create_help_request():
 
     return jsonify({
         "message": "Help request created successfully",
-        "id": new_request.request_id
+        "request": {
+            "id": new_request.pin_requests_id,
+            "title": new_request.title,
+            "description": new_request.description,
+            "urgency": new_request.urgency,
+            "status": new_request.status,
+            "user_id": new_request.user_id,
+            "created_at": new_request.created_at
+        }
     }), 201
 
 

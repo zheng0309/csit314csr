@@ -1,29 +1,132 @@
 # app/seed_data.py
 from app import create_app, db
-from app.models import User, PinRequest
+from app.models import User, Category, PinRequest, CSRShortlist, MatchHistory, Report
+from datetime import datetime
 
 app = create_app()
 
 with app.app_context():
     db.create_all()
 
+    # Only seed if DB is empty
     if not User.query.first():
-        # Add sample CSR users
+        print("🌱 Seeding database...")
+
+        # -------------------------------------------------------------------
+        # 1️⃣ Create Users (CSR + PIN)
+        # -------------------------------------------------------------------
+        csr_users = []
+        pin_users = []
+
         for i in range(5):
-            user = User(name=f"CSR User {i+1}", role="CSR Rep", email=f"csr{i+1}@mail.com", password="csrpass")
-            db.session.add(user)
+            csr = User(
+                username=f"csr{i+1}",
+                name=f"CSR User {i+1}",
+                role="CSR Rep",
+                email=f"csr{i+1}@mail.com",
+                password="csrpass"
+            )
+            db.session.add(csr)
+            csr_users.append(csr)
 
-        # Add sample PIN users
         for i in range(3):
-            pin_user = User(name=f"PIN User {i+1}", role="PIN", email=f"pin{i+1}@mail.com", password="pinpass")
-            db.session.add(pin_user)
+            pin = User(
+                username=f"pin{i+1}",
+                name=f"PIN User {i+1}",
+                role="PIN",
+                email=f"pin{i+1}@mail.com",
+                password="pinpass"
+            )
+            db.session.add(pin)
+            pin_users.append(pin)
 
-        # Add sample requests
+        db.session.commit()  # ✅ Users now have IDs
+
+        # -------------------------------------------------------------------
+        # 2️⃣ Create Categories
+        # -------------------------------------------------------------------
+        categories = [
+            Category(name="Food Assistance", description="Requests for food and water supplies."),
+            Category(name="Medical Aid", description="Requests for healthcare or medication."),
+            Category(name="Shelter", description="Requests for temporary housing or shelter."),
+        ]
+        db.session.add_all(categories)
+        db.session.commit()
+
+        # -------------------------------------------------------------------
+        # 3️⃣ Create Sample PIN Requests
+        # -------------------------------------------------------------------
+        requests = []
         for i in range(10):
-            req = PinRequest(title=f"Request {i+1}", description="Sample help request", status="Open")
+            assigned_user = pin_users[i % len(pin_users)]
+            assigned_category = categories[i % len(categories)]
+            req = PinRequest(
+                title=f"Request {i+1}",
+                description=f"Help request number {i+1} for urgent assistance.",
+                location="Kuala Lumpur",
+                status="open",
+                urgency="medium" if i % 2 == 0 else "high",
+                user_id=assigned_user.users_id,     # ✅ Correct FK
+                category_id=assigned_category.categories_id,  # ✅ Correct FK
+                created_at=datetime.utcnow()
+            )
             db.session.add(req)
+            requests.append(req)
 
         db.session.commit()
-        print("✅ Seeded test data.")
+
+        # -------------------------------------------------------------------
+        # 4️⃣ Create CSR Shortlists (CSR users shortlist some requests)
+        # -------------------------------------------------------------------
+        shortlists = []
+        for i, req in enumerate(requests[:5]):  # First 5 requests shortlisted
+            csr = csr_users[i % len(csr_users)]
+            shortlist = CSRShortlist(
+                csr_id=csr.users_id,
+                request_id=req.pin_requests_id
+            )
+            db.session.add(shortlist)
+            shortlists.append(shortlist)
+
+        db.session.commit()
+
+        # -------------------------------------------------------------------
+        # 5️⃣ Create Match History (Matched CSR ↔ PIN requests)
+        # -------------------------------------------------------------------
+        matches = []
+        for i, req in enumerate(requests[5:8]):  # Next 3 matched
+            csr = csr_users[i % len(csr_users)]
+            match = MatchHistory(
+                csr_id=csr.users_id,
+                request_id=req.pin_requests_id,
+                match_status="completed"
+            )
+            db.session.add(match)
+            matches.append(match)
+
+        db.session.commit()
+
+        # -------------------------------------------------------------------
+        # 6️⃣ Create Reports (Managers generate reports)
+        # -------------------------------------------------------------------
+        for i, csr in enumerate(csr_users[:2]):  # First 2 CSRs act as managers
+            report = Report(
+                manager_id=csr.users_id,
+                report_type="weekly" if i % 2 == 0 else "monthly",
+                content=f"Report generated by {csr.name}."
+            )
+            db.session.add(report)
+
+        db.session.commit()
+
+        print("✅ Database seeded successfully.")
+        print(f"   → {len(csr_users)} CSR users")
+        print(f"   → {len(pin_users)} PIN users")
+        print(f"   → {len(categories)} categories")
+        print(f"   → {len(requests)} help requests")
+        print(f"   → {len(shortlists)} shortlists")
+        print(f"   → {len(matches)} match records")
+        print(f"   → {Report.query.count()} reports")
+
     else:
-        print("⚠️ Data already exists.")
+        print("⚠️ Data already exists — skipping seeding.")
