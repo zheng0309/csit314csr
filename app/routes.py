@@ -1,12 +1,3 @@
-print("routes.py loaded")   # <-- add this at the top
-
-from flask import Blueprint, jsonify, request
-from app.database import db
-from app.models import User, PinRequest
-
-main = Blueprint('main', __name__)
-
-
 from flask import Blueprint, jsonify, request
 from app.database import db
 from app.models import User, PinRequest
