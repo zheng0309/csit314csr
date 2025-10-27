@@ -1,9 +1,22 @@
 import React, { useState } from "react";
+import { BrowserRouter as Router, Routes, Route, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Loader2, Mail, Lock, Eye, EyeOff, Github, ShieldCheck, ChevronRight } from "lucide-react";
 import "./App.css";
+import Dashboard from "/src/Dashboard.jsx";
 
 export default function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<LoginPage />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+      </Routes>
+    </Router>
+  );
+}
+
+function LoginPage() {
   return (
     <div className="app-root">
       {/* ambient orbs */}
@@ -18,6 +31,7 @@ export default function App() {
 }
 
 function LoginCard() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -45,13 +59,34 @@ function LoginCard() {
     e.preventDefault();
     if (!validate()) return;
     setIsSubmitting(true);
-    // Simulate API call
-    await new Promise((r) => setTimeout(r, 1200));
-    setIsSubmitting(false);
-    alert(`Signed in as ${email} — (demo)`);
+    setErrors({ email: "", password: "" });
+
+    try {
+      const res = await fetch("http://localhost:5000/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        alert(`✅ Login successful! Welcome ${data.user.name}`);
+        // Store user info in localStorage
+        localStorage.setItem("user", JSON.stringify(data.user));
+        navigate("/dashboard"); // ✅ redirect to Dashboard
+      } else {
+        setErrors({ ...errors, password: data.error || "Login failed" });
+      }
+    } catch (err) {
+      console.error("Login error:", err);
+      alert("❌ Could not connect to the backend server.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const strength = Math.min(100, password.length * 12.5); // naive strength meter
+  const strength = Math.min(100, password.length * 12.5);
 
   return (
     <motion.section
@@ -82,15 +117,11 @@ function LoginCard() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
-                aria-invalid={!!errors.email}
-                aria-describedby="email-error"
                 autoComplete="email"
                 required
               />
             </div>
-            {errors.email && (
-              <p id="email-error" className="error">{errors.email}</p>
-            )}
+            {errors.email && <p className="error">{errors.email}</p>}
           </label>
 
           {/* Password */}
@@ -104,8 +135,6 @@ function LoginCard() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                aria-invalid={!!errors.password}
-                aria-describedby="password-error"
                 autoComplete="current-password"
                 required
               />
@@ -113,21 +142,17 @@ function LoginCard() {
                 type="button"
                 onClick={() => setShowPassword((s) => !s)}
                 className="ghost-btn"
-                aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? <EyeOff className="icon" /> : <Eye className="icon" />}
               </button>
             </div>
-            {errors.password && (
-              <p id="password-error" className="error">{errors.password}</p>
-            )}
+            {errors.password && <p className="error">{errors.password}</p>}
 
             {/* Strength meter */}
             <div className="strength">
               <div
                 className={`bar ${strength < 40 ? "weak" : strength < 70 ? "okay" : "strong"}`}
                 style={{ width: `${Math.max(8, strength)}%` }}
-                aria-hidden
               />
             </div>
           </label>
@@ -179,8 +204,6 @@ function LoginCard() {
           Don’t have an account? <a href="#create" className="link">Create one</a>
         </p>
       </div>
-
-      
     </motion.section>
   );
 }
