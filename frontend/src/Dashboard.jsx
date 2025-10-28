@@ -15,7 +15,6 @@ import {
   Grow,
   useTheme,
   useMediaQuery,
-  Button
 } from '@mui/material';
 import {
   People,
