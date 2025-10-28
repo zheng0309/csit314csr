@@ -3,7 +3,8 @@ import { BrowserRouter as Router, Routes, Route, useNavigate } from "react-route
 import { motion } from "framer-motion";
 import { Loader2, Mail, Lock, Eye, EyeOff, Github, ShieldCheck, ChevronRight } from "lucide-react";
 import "./App.css";
-import Dashboard from "/src/Dashboard.jsx";
+import Dashboard from "/src/CSRDashboard.jsx";
+import PMDashboard from "/src/PMDashboard.jsx";
 
 export default function App() {
   return (
@@ -11,6 +12,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<LoginPage />} />
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/pmdashboard" element={<PMDashboard />} />
       </Routes>
     </Router>
   );
