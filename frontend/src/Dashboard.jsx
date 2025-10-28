@@ -15,6 +15,7 @@ import {
   Grow,
   useTheme,
   useMediaQuery,
+  Button
 } from '@mui/material';
 import {
   People,
@@ -83,7 +84,7 @@ const Dashboard = () => {
   const handleLogout = () => {
     localStorage.removeItem('token'); // if you’re storing JWT/session
     sessionStorage.clear();
-    navigate('/login'); // go back to login page
+    navigate('/'); // go back to login page
   };
 
   const statCards = [
