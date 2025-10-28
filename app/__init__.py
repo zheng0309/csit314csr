@@ -40,3 +40,5 @@ def create_app():
 
     print(f"✅ Connected to database: {app.config['SQLALCHEMY_DATABASE_URI']}")
     return app
+
+## Testing
