@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route, useNavigate } from "react-route
 import { motion } from "framer-motion";
 import { Loader2, Mail, Lock, Eye, EyeOff, Github, ShieldCheck, ChevronRight } from "lucide-react";
 import "./App.css";
-import Dashboard from "/src/Dashboard.jsx";
+import Dashboard from "/src/CSRDashboard.jsx";
 
 export default function App() {
   return (
