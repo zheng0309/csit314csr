@@ -1,12 +1,18 @@
-#!/bin/sh
-echo " Waiting for PostgreSQL to start..."
-sleep 5
+#!/usr/bin/env sh
+set -e
 
-echo " Running migrations..."
-flask db upgrade || flask db init && flask db migrate && flask db upgrade
+echo "⏳ Waiting for database..."
+# Optional: rely on compose healthcheck instead if you prefer
+sleep 2
 
-echo " Seeding data..."
-python -m app.seed_data
+echo "🧱 Ensuring schema with SQLAlchemy (db.create_all)..."
+python - <<'PY'
+from app import create_app, db
+app = create_app()
+with app.app_context():
+    db.create_all()
+    print("✅ Tables ensured with db.create_all()")
+PY
 
 echo "Starting Flask app..."
 exec gunicorn -b 0.0.0.0:5000 "app:create_app()"

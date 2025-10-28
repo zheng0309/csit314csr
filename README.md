@@ -101,6 +101,8 @@ FLASK_ENV=development
 
 docker compose up --build
 
+To import after containers are running:
+   docker exec -i db psql -U postgres -d csrdb < db/seed_data.sql
 
 #### Step 4. Access the application
 | Service                 | URL                                            | Description         |

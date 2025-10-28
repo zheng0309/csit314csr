@@ -1,8 +1,6 @@
 services:
   db:
-    image: postgres:15
-    container_name: csr_db
-    restart: unless-stopped
+    image: postgres:14
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASS}
@@ -31,5 +29,16 @@ services:
     volumes:
       - .:/app
 
+  web:
+    build: .
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy   # ✅ wait until db is ready
+    ports:
+      - "5070:5000"
+    command: ["/app/entrypoint.sh"]
+    volumes:
+      - .:/app
 volumes:
   csr_db_data:
