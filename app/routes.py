@@ -1,18 +1,24 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, session
 from app.database import db
 from app.models import User, PinRequest
-
+from flask_cors import cross_origin
 
 main = Blueprint('main', __name__)
 
+# ---------------------------------
+# 🩺 Health Check
+# ---------------------------------
 @main.route('/')
+@cross_origin()
 def health_check():
     return jsonify({"message": "CSR Volunteer System is running"}), 200
 
-# -------------------------------
-# 🧾 PIN Login Endpoint
-# -------------------------------
+
+# ---------------------------------
+# 🔐 Login (PIN only)
+# ---------------------------------
 @main.route('/api/login', methods=['POST'])
+@cross_origin()
 def login():
     data = request.get_json()
 
@@ -27,23 +33,45 @@ def login():
     if user.role != "PIN":
         return jsonify({"error": "Only PIN users can log in here"}), 403
 
+    # ✅ Store session data
+    session['user'] = {
+        "users_id": user.users_id,
+        "name": user.name,
+        "email": user.email,
+        "role": user.role
+    }
+
     return jsonify({
         "message": "Login successful",
         "user": {
-            "id": user.id,
+            "users_id": user.users_id,
             "name": user.name,
             "email": user.email,
             "role": user.role
         }
     }), 200
 
-# List all requests
-@main.route('/requests')
+
+# ---------------------------------
+# 🚪 Logout Endpoint
+# ---------------------------------
+@main.route('/api/logout', methods=['POST'])
+@cross_origin()
+def logout():
+    session.pop('user', None)
+    return jsonify({"message": "Logout successful"}), 200
+
+
+# ---------------------------------
+# 📋 Get All Requests
+# ---------------------------------
+@main.route('/requests', methods=['GET'])
+@cross_origin()
 def get_requests():
     requests = PinRequest.query.all()
     results = [
         {
-            "id": req.request_id,
+            "id": req.pin_requests_id,
             "title": req.title,
             "description": req.description,
             "status": req.status,
@@ -52,12 +80,17 @@ def get_requests():
     ]
     return jsonify(results), 200
 
-@main.route('/users')
+
+# ---------------------------------
+# 👥 Get All Users
+# ---------------------------------
+@main.route('/users', methods=['GET'])
+@cross_origin()
 def get_users():
     users = User.query.all()
     results = [
         {
-            "id": u.id,
+            "users_id": u.users_id,
             "name": u.name,
             "role": u.role,
             "email": u.email,
@@ -66,26 +99,26 @@ def get_users():
     ]
     return jsonify(results), 200
 
-# -------------------------------
-# Create a New Help Request
-# -------------------------------
+
+# ---------------------------------
+# 🆕 Create New Help Request
+# ---------------------------------
 @main.route('/api/help-requests', methods=['POST'])
+@cross_origin()
 def create_help_request():
     data = request.get_json()
 
-    # ✅ Validate required fields
     if not data or not data.get('title') or not data.get('description') or not data.get('user_id'):
         return jsonify({"error": "Title, description, and user_id are required"}), 400
 
-    # ✅ Create new help request
     new_request = PinRequest(
         title=data['title'],
         description=data['description'],
-        user_id=data['user_id'],                 
-        category_id=data.get('category_id'),     # Optional
-        urgency=data.get('urgency', 'medium'),   
-        location=data.get('location'),           # Optional
-        status='open'                            
+        user_id=data['user_id'],
+        category_id=data.get('category_id'),
+        urgency=data.get('urgency', 'medium'),
+        location=data.get('location'),
+        status='open'
     )
 
     db.session.add(new_request)
@@ -105,13 +138,13 @@ def create_help_request():
     }), 201
 
 
-
 # ---------------------------------
-# Get all help requests by PIN ID
+# 📦 Get All Help Requests by User ID
 # ---------------------------------
 @main.route('/api/help_requests/<int:user_id>', methods=['GET'])
+@cross_origin()
 def get_help_requests_by_user(user_id):
-    help_requests = HelpRequest.query.filter_by(pin_id=pin_id).all()
+    help_requests = PinRequest.query.filter_by(user_id=user_id).all()
 
     if not help_requests:
         return jsonify({"message": "No help requests found for this user."}), 404

@@ -25,7 +25,7 @@ def create_app():
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'supersecretkey')
 
     #  Enable CORS for frontend
-    CORS(app)
+    CORS(app, resources={r"/api/*": {"origins": "*"}})
 
     #  Initialize the database
     init_db(app)

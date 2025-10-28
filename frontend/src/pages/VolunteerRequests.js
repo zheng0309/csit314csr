@@ -37,7 +37,7 @@ const VolunteerRequests = () => {
   useEffect(() => {
     const fetchRequests = async () => {
       try {
-        const response = await axios.get('http://localhost:5001/requests');
+        const response = await axios.get('http://localhost:5000/requests');
         setRequests(response.data);
       } catch (error) {
         console.error('Error fetching requests:', error);
