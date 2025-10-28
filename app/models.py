@@ -1,10 +1,29 @@
-from app.database import db
+from datetime import datetime
+from app import db
 
+# -------------------------------------------------------------------
+# USER TABLE
+# -------------------------------------------------------------------
 class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100))
-    email = db.Column(db.String(120), unique=True)
-    role = db.Column(db.String(50))
+    __tablename__ = 'users'
+
+    users_id = db.Column(db.Integer, primary_key=True)  # PK
+    username = db.Column(db.String(50), unique=True, nullable=False)  # username e.g. pin001, csr001
+    name = db.Column(db.String(100), nullable=False)
+    email = db.Column(db.String(100), unique=True, nullable=False)
+    password = db.Column(db.String(100), nullable=False)
+    role = db.Column(db.String(50), nullable=False)  # admin, platform_manager, csr_rep, pin
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relationships
+    pin_requests = db.relationship('PinRequest', backref='pin_user', lazy=True)
+    reports = db.relationship('Report', backref='manager', lazy=True)
+    shortlists = db.relationship('CSRShortlist', backref='csr_user', lazy=True)
+    matches = db.relationship('MatchHistory', backref='csr_match', lazy=True)
+
+    def __repr__(self):
+        return f"<User {self.user_id} ({self.role})>"
+
 
 # -------------------------------------------------------------------
 # CATEGORY TABLE
@@ -26,10 +45,26 @@ class Category(db.Model):
 # PIN REQUEST TABLE
 # -------------------------------------------------------------------
 class PinRequest(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(100))
+    __tablename__ = 'pin_requests'
+
+    pin_requests_id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.users_id'), nullable=False)
+    category_id = db.Column(db.Integer, db.ForeignKey('categories.categories_id'))
+    title = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text)
-    status = db.Column(db.String(20))
+    location = db.Column(db.String(100))
+    status = db.Column(db.String(20), default='open')  # open, matched, closed
+    urgency = db.Column(db.String(20), default='medium')  # low, medium, high
+    completion_note = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime)
+
+    # Relationships
+    shortlists = db.relationship('CSRShortlist', backref='request', lazy=True)
+    matches = db.relationship('MatchHistory', backref='request', lazy=True)
+
+    def __repr__(self):
+        return f"<Request {self.title} ({self.status})>"
 
 
 # -------------------------------------------------------------------
