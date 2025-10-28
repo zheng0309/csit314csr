@@ -11,6 +11,7 @@ def create_app():
     load_dotenv()
 
     app = Flask(__name__)
+    CORS(app)
 
     #  PostgreSQL connection using .env values
     app.config['SQLALCHEMY_DATABASE_URI'] = (
@@ -33,4 +34,9 @@ def create_app():
     from app.routes import main
     app.register_blueprint(main)
 
+    # ✅ Create tables automatically
+    with app.app_context():
+        db.create_all()
+
+    print(f"✅ Connected to database: {app.config['SQLALCHEMY_DATABASE_URI']}")
     return app
