@@ -13,7 +13,7 @@ import {
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
-const Dashboard = () => {
+const CSRDashboard = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const navigate = useNavigate();
@@ -597,4 +597,4 @@ const Dashboard = () => {
   );
 };
 
-export default Dashboard;
+export default CSRDashboard;
