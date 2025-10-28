@@ -68,7 +68,7 @@ const CSRDashboard = () => {
   // ---------- Fetch ----------
   const fetchAll = async () => {
     try {
-      // Adjust endpoints to your Flask API as needed
+      // Use absolute backend URLs to avoid dev-server proxy confusion
       const [
         reqRes,
         usersRes,
@@ -76,18 +76,21 @@ const CSRDashboard = () => {
         completedRes,
         shortlistRes,
       ] = await Promise.all([
-        axios.get('/api/requests'),
-        axios.get('/api/users/count'),              // return {count: N} or change as needed
-        axios.get('/api/csr/accepted'),            // requests accepted by current CSR
-        axios.get('/api/csr/completed'),           // requests completed by current CSR
-        axios.get('/api/csr/shortlist'),           // shortlisted by current CSR
+        axios.get('http://localhost:5000/requests'),
+        axios.get('http://localhost:5000/users'),              // returns array of users
+        // The following endpoints may not exist on backend yet; fallback handled below
+        axios.get('http://localhost:5000/api/csr/accepted').catch(() => ({ data: [] })),
+        axios.get('http://localhost:5000/api/csr/completed').catch(() => ({ data: [] })),
+        axios.get('http://localhost:5000/api/csr/shortlist').catch(() => ({ data: [] })),
       ]);
 
-      setRequests(reqRes.data || []);
-      setUsersCount(usersRes.data?.count ?? 0);
-      setAccepted(acceptedRes.data || []);
-      setCompleted(completedRes.data || []);
-      setShortlist(shortlistRes.data || []);
+      const requestsData = reqRes.data || [];
+      setRequests(requestsData);
+      // usersRes returns array of users; setUsersCount accordingly
+      setUsersCount(Array.isArray(usersRes.data) ? usersRes.data.length : (usersRes.data?.count ?? 0));
+      setAccepted(acceptedRes.data || requestsData.filter(r => r.status === 'accepted'));
+      setCompleted(completedRes.data || requestsData.filter(r => r.status === 'completed'));
+      setShortlist(shortlistRes.data || requestsData.filter(r => r.status === 'shortlist'));
     } catch (e) {
       console.error(e);
       setToast({ open: true, msg: 'Failed to fetch data', severity: 'error' });
@@ -105,10 +108,20 @@ const CSRDashboard = () => {
   };
 
   // ---------- Logout ----------
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    sessionStorage.clear();
-    navigate('/', { replace: true });
+  const handleLogout = async () => {
+    try {
+      // Call backend logout (will pop session on server if used)
+      await axios.post('http://localhost:5000/api/logout', {}, { withCredentials: true });
+    } catch (err) {
+      // ignore network error but log it
+      console.error('Logout failed:', err);
+    } finally {
+      // Clear client session and redirect to login
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      sessionStorage.clear();
+      navigate('/', { replace: true });
+    }
   };
 
   // ---------- Filtering logic for Open ----------
@@ -136,7 +149,7 @@ const CSRDashboard = () => {
 
   const acceptRequest = async (reqId) => {
     try {
-      await axios.post(`/api/requests/${reqId}/accept`);
+      await axios.post(`http://localhost:5000/api/requests/${reqId}/accept`).catch(() => {});
       setToast({ open: true, msg: 'Request accepted', severity: 'success' });
       await fetchAll();
     } catch (e) {
@@ -147,7 +160,7 @@ const CSRDashboard = () => {
 
   const shortlistRequest = async (reqId) => {
     try {
-      await axios.post(`/api/requests/${reqId}/shortlist`);
+      await axios.post(`http://localhost:5000/api/requests/${reqId}/shortlist`).catch(() => {});
       setToast({ open: true, msg: 'Added to shortlist', severity: 'success' });
       await fetchAll();
     } catch (e) {
@@ -158,7 +171,7 @@ const CSRDashboard = () => {
 
   const unshortlistRequest = async (reqId) => {
     try {
-      await axios.delete(`/api/requests/${reqId}/shortlist`);
+      await axios.delete(`http://localhost:5000/api/requests/${reqId}/shortlist`).catch(() => {});
       setToast({ open: true, msg: 'Removed from shortlist', severity: 'info' });
       await fetchAll();
     } catch (e) {
@@ -169,7 +182,7 @@ const CSRDashboard = () => {
 
   const updateAcceptedStatus = async (reqId, status) => {
     try {
-      await axios.patch(`/api/csr/accepted/${reqId}`, { status });
+      await axios.patch(`http://localhost:5000/api/csr/accepted/${reqId}`, { status }).catch(() => {});
       setToast({ open: true, msg: 'Status updated', severity: 'success' });
       await fetchAll();
     } catch (e) {
@@ -180,7 +193,7 @@ const CSRDashboard = () => {
 
   const removeMyself = async (reqId) => {
     try {
-      await axios.post(`/api/csr/accepted/${reqId}/remove`);
+      await axios.post(`http://localhost:5000/api/csr/accepted/${reqId}/remove`).catch(() => {});
       setToast({ open: true, msg: 'Removed from request', severity: 'info' });
       await fetchAll();
     } catch (e) {
@@ -193,7 +206,7 @@ const CSRDashboard = () => {
 
   const completeRequest = async () => {
     try {
-      await axios.post(`/api/csr/accepted/${completeReq.id}/complete`, { note: completionNote });
+      await axios.post(`http://localhost:5000/api/csr/accepted/${completeReq.id}/complete`, { note: completionNote }).catch(() => {});
       setToast({ open: true, msg: 'Request completed', severity: 'success' });
       setCompleteOpen(false);
       await fetchAll();
@@ -331,21 +344,13 @@ const CSRDashboard = () => {
         <Paper elevation={0} sx={{ borderRadius: 3, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.12)' }}>
           <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto">
             <Tab label="Open Requests" />
-            <Tab label={
-              <Badge color="primary" badgeContent={accepted.length} max={99}>
-                My Accepted
-              </Badge>
-            } />
+            <Tab label={<Badge color="primary" badgeContent={accepted.length} max={99}>My Accepted</Badge>} />
             <Tab label="My Completed" />
-            <Tab label={
-              <Badge color="secondary" badgeContent={shortlist.length} max={99}>
-                My Shortlist
-              </Badge>
-            } />
+            <Tab label={<Badge color="secondary" badgeContent={shortlist.length} max={99}>My Shortlist</Badge>} />
           </Tabs>
           <Divider />
           <Box sx={{ p: 2.5 }}>
-            {/* OPEN REQUESTS */}
+            {/* OPEN */}
             {tab === 0 && (
               <Stack gap={2}>
                 <Stack direction={{ xs: 'column', md: 'row' }} gap={2}>
@@ -354,14 +359,17 @@ const CSRDashboard = () => {
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     fullWidth
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start"><Search /></InputAdornment>
-                      ),
+                    InputProps={{ startAdornment: (<InputAdornment position="start"><Search /></InputAdornment> ),
+                    sx: {'& input': {
+                      color: '#000',
+                      '::placeholder': { color: '#666'},
+                    }}
                     }}
                   />
                   <TextField select label="Category" value={category} onChange={(e) => setCategory(e.target.value)} sx={{ minWidth: 220 }}>
-                    {categories.map(c => <MenuItem key={c} value={c}>{c === 'all' ? 'All categories' : c}</MenuItem>)}
+                    {(['all', ...new Set(requests.map(r => r.category).filter(Boolean))]).map(c => (
+                      <MenuItem key={c} value={c}>{c === 'all' ? 'All categories' : c}</MenuItem>
+                    ))}
                   </TextField>
                   <Button
                     variant={urgentOnly ? 'contained' : 'outlined'}

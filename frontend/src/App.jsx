@@ -1,20 +1,27 @@
 import React, { useState } from "react";
 import { BrowserRouter as Router, Routes, Route, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Loader2, Mail, Lock, Eye, EyeOff, Github, ShieldCheck, ChevronRight } from "lucide-react";
+import {
+  Loader2,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  Github,
+  ShieldCheck,
+  ChevronRight,
+} from "lucide-react";
 import "./App.css";
-import Dashboard from "/src/dashboard.jsx";
 import CSRDashboard from "/src/CSRDashboard.jsx";
-import PMDashboard from "/src/PMDashboard.jsx";
+import Dashboard from "/src/Dashboard.jsx";
 
 export default function App() {
   return (
     <Router>
       <Routes>
         <Route path="/" element={<LoginPage />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/csrdashboard" element={<CSRDashboard />} />
-        <Route path="/pmdashboard" element={<PMDashboard />} />
+        <Route path="/dashboard" element={<Dashboard />} /> {/* PIN */}
+        <Route path="/csrdashboard" element={<CSRDashboard />} /> {/* CSR */}
       </Routes>
     </Router>
   );
@@ -23,10 +30,8 @@ export default function App() {
 function LoginPage() {
   return (
     <div className="app-root">
-      {/* ambient orbs */}
       <div className="orb orb-left" />
       <div className="orb orb-right" />
-
       <div className="app-center">
         <LoginCard />
       </div>
@@ -76,9 +81,18 @@ function LoginCard() {
 
       if (res.ok) {
         alert(`✅ Login successful! Welcome ${data.user.name}`);
-        // Store user info in localStorage
+
+        // Save user info
         localStorage.setItem("user", JSON.stringify(data.user));
-        navigate("/dashboard"); // ✅ redirect to Dashboard
+
+        // ✅ Redirect based on role
+        if (data.user.role === "CSR") {
+          navigate("/csrdashboard");
+        } else if (data.user.role === "PIN") {
+          navigate("/dashboard");
+        } else {
+          alert("⚠️ Unknown role, staying on login page.");
+        }
       } else {
         setErrors({ ...errors, password: data.error || "Login failed" });
       }
@@ -155,7 +169,9 @@ function LoginCard() {
             {/* Strength meter */}
             <div className="strength">
               <div
-                className={`bar ${strength < 40 ? "weak" : strength < 70 ? "okay" : "strong"}`}
+                className={`bar ${
+                  strength < 40 ? "weak" : strength < 70 ? "okay" : "strong"
+                }`}
                 style={{ width: `${Math.max(8, strength)}%` }}
               />
             </div>
@@ -170,7 +186,9 @@ function LoginCard() {
               />
               <span>Remember me</span>
             </label>
-            <a href="#forgot" className="link">Forgot password?</a>
+            <a href="#forgot" className="link">
+              Forgot password?
+            </a>
           </div>
 
           <motion.button
@@ -205,7 +223,10 @@ function LoginCard() {
         </form>
 
         <p className="footnote">
-          Don’t have an account? <a href="#create" className="link">Create one</a>
+          Don’t have an account?{" "}
+          <a href="#create" className="link">
+            Create one
+          </a>
         </p>
       </div>
     </motion.section>

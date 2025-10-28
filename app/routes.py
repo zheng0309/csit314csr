@@ -15,7 +15,7 @@ def health_check():
 
 
 # ---------------------------------
-# 🔐 Login (PIN only)
+# 🔐 Login (CSR + PIN)
 # ---------------------------------
 @main.route('/api/login', methods=['POST'])
 @cross_origin()
@@ -30,8 +30,9 @@ def login():
     if not user:
         return jsonify({"error": "Invalid credentials"}), 401
 
-    if user.role != "PIN":
-        return jsonify({"error": "Only PIN users can log in here"}), 403
+    # ✅ Allow both CSR and PIN users
+    if user.role not in ["PIN", "CSR"]:
+        return jsonify({"error": f"User role '{user.role}' is not recognized"}), 403
 
     # ✅ Store session data
     session['user'] = {
@@ -42,7 +43,7 @@ def login():
     }
 
     return jsonify({
-        "message": "Login successful",
+        "message": f"Login successful as {user.role}",
         "user": {
             "users_id": user.users_id,
             "name": user.name,

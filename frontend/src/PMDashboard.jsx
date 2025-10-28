@@ -172,7 +172,9 @@ export default function PMDashboard(){
         {tab===0 && (
           <Box sx={{ p:2.5 }}>
             <Stack direction={{ xs:'column', md:'row' }} spacing={2} sx={{ mb:2 }}>
-              <TextField fullWidth placeholder="Search categories by name or description" value={catQuery} onChange={(e)=>setCatQuery(e.target.value)} InputProps={{ startAdornment:(<InputAdornment position="start"><Search/></InputAdornment>) }} />
+              <TextField fullWidth placeholder="Search categories by name or description" value={catQuery} onChange={(e)=>setCatQuery(e.target.value)} InputProps={{ startAdornment:(<InputAdornment position="start"><Search/></InputAdornment>) }} 
+              sx = {{'& .MuiInputBase-input': {color: '#000'},
+              '& .MuiInputBase-input::placeholder': {color: '#666', opacity: 1},}}/>
               <TextField select label="Filter" value={catUsageFilter} onChange={(e)=>setCatUsageFilter(e.target.value)} sx={{ minWidth:200 }}>
                 <MenuItem value="all">All</MenuItem>
                 <MenuItem value="active">Active</MenuItem>
