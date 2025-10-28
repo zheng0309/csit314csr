@@ -105,3 +105,29 @@ def create_help_request():
     }), 201
 
 
+
+# ---------------------------------
+# Get all help requests by PIN ID
+# ---------------------------------
+@main.route('/api/help_requests/<int:user_id>', methods=['GET'])
+def get_help_requests_by_user(user_id):
+    help_requests = HelpRequest.query.filter_by(pin_id=pin_id).all()
+
+    if not help_requests:
+        return jsonify({"message": "No help requests found for this user."}), 404
+
+    data = []
+    for req in help_requests:
+        data.append({
+            "id": req.pin_requests_id,
+            "title": req.title,
+            "description": req.description,
+            "category": req.category.name if req.category else None,
+            "location": req.location,
+            "status": req.status,
+            "urgency": req.urgency,
+            "completion_note": req.completion_note,
+            "created_at": req.created_at,
+            "completed_at": req.completed_at
+        })
+    return jsonify(data), 200
