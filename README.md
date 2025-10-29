@@ -103,7 +103,20 @@ The setup script will automatically:
 | ----------------------- | ---------------------------------------------- | ------------------- |
 | **Frontend (React)**    | [http://localhost:3000](http://localhost:3000) | User interface      |
 | **Backend API (Flask)** | [http://localhost:5000](http://localhost:5000) | REST API            |
+| **pgAdmin (Database UI)** | [http://localhost:5050](http://localhost:5050) | Database management |
 | **Database (PostgreSQL)** | localhost:5432 | Database server     |
+
+### **🔑 pgAdmin Login Credentials**
+- **Email:** `admin@csr.com`
+- **Password:** `admin123`
+
+### **🗄️ Database Connection in pgAdmin**
+Once logged into pgAdmin, add a new server with these details:
+- **Host:** `db` (or `localhost` if connecting from outside Docker)
+- **Port:** `5432`
+- **Username:** `csruser`
+- **Password:** `csrpass`
+- **Database:** `csrdb`
 
 ### **🔧 Manual Setup (Alternative)**
 

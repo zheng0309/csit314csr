@@ -77,7 +77,12 @@ echo.
 echo 📱 Access your application:
 echo    Frontend (React):     http://localhost:3000
 echo    Backend API (Flask):  http://localhost:5000
+echo    pgAdmin (Database UI): http://localhost:5050
 echo    Database (PostgreSQL): localhost:5432
+echo.
+echo 🔑 pgAdmin Login:
+echo    Email:    admin@csr.com
+echo    Password: admin123
 echo.
 echo 🔧 Useful commands:
 echo    View logs:     %COMPOSE_CMD% logs -f
