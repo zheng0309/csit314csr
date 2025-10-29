@@ -117,7 +117,7 @@ def create_help_request():
         description=data['description'],
         user_id=data['user_id'],
         category_id=data.get('category_id'),
-        urgency=data.get('urgency', 'medium'),
+        urgency=data.get('urgency', 'medium'),      # Urgency is set to "medium", but there will be a dropdown box for PIN to choose other
         location=data.get('location'),
         status='open'
     )
