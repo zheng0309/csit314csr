@@ -165,3 +165,32 @@ def get_help_requests_by_user(user_id):
             "completed_at": req.completed_at.isoformat() if req.completed_at else None
         })
     return jsonify(data), 200
+
+
+# ---------------------------------
+# 📦 Get All Open Help Requests (For CSR)
+# ---------------------------------
+@main.route('/api/help_requests/open', methods=['GET'])
+@cross_origin()
+def get_open_help_requests():
+    # Query all open help requests
+    open_requests = PinRequest.query.filter_by(status='open').all()
+
+    if not open_requests:
+        return jsonify({"message": "No open help requests found."}), 404
+
+    data = []
+    for req in open_requests:
+        data.append({
+            "id": req.pin_requests_id,
+            "title": req.title,
+            "description": req.description,
+            "category": req.category.name if req.category else None,
+            "requester_name": req.pin_user.name if req.pin_user else None,
+            "location": req.location,
+            "urgency": req.urgency,
+            "status": req.status,
+            "created_at": req.created_at.isoformat() if req.created_at else None
+        })
+
+    return jsonify(data), 200
