@@ -140,7 +140,7 @@ def create_help_request():
 
 
 # ---------------------------------
-# 📦 Get All Help Requests by User ID
+# 📦 Get Help Requests by PIN ID to see "status"
 # ---------------------------------
 @main.route('/api/help_requests/<int:user_id>', methods=['GET'])
 @cross_origin()
@@ -161,7 +161,7 @@ def get_help_requests_by_user(user_id):
             "status": req.status,
             "urgency": req.urgency,
             "completion_note": req.completion_note,
-            "created_at": req.created_at,
-            "completed_at": req.completed_at
+            "created_at": req.created_at.isoformat() if req.created_at else None,
+            "completed_at": req.completed_at.isoformat() if req.completed_at else None
         })
     return jsonify(data), 200
