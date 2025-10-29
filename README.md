@@ -73,22 +73,52 @@ csit314-csr/
 
 
 
-## ⚙️ Setup Instructions
+## ⚙️ Quick Setup Instructions
 
-### **Option 1 – Run with Docker (Recommended)**
+### **🚀 One-Command Setup (Recommended)**
 
-#### Step 1. Clone the repository
-
+**For macOS/Linux:**
+```bash
 git clone https://github.com/zheng0309/csit314csr.git
-
 cd csit314csr
+./setup.sh
+```
 
-## Step 2. Create environment file
+**For Windows:**
+```cmd
+git clone https://github.com/zheng0309/csit314csr.git
+cd csit314csr
+setup.bat
+```
 
-cp .env.example .env
+The setup script will automatically:
+- ✅ Check Docker installation
+- ✅ Create environment files
+- ✅ Build and start all services
+- ✅ Initialize database with sample data
+- ✅ Provide access URLs
 
-## Edit .env and verify values such as:
+### **📱 Access Your Application**
+| Service                 | URL                                            | Description         |
+| ----------------------- | ---------------------------------------------- | ------------------- |
+| **Frontend (React)**    | [http://localhost:3000](http://localhost:3000) | User interface      |
+| **Backend API (Flask)** | [http://localhost:5000](http://localhost:5000) | REST API            |
+| **Database (PostgreSQL)** | localhost:5432 | Database server     |
 
+### **🔧 Manual Setup (Alternative)**
+
+If you prefer manual setup:
+
+#### Step 1. Clone and navigate
+```bash
+git clone https://github.com/zheng0309/csit314csr.git
+cd csit314csr
+```
+
+#### Step 2. Create environment files
+```bash
+# Backend environment
+cat > .env << EOF
 DB_HOST=db
 DB_PORT=5432
 DB_USER=csruser
@@ -96,29 +126,18 @@ DB_PASS=csrpass
 DB_NAME=csrdb
 SECRET_KEY=supersecretkey
 FLASK_ENV=development
+EOF
 
-#### Step 3. Build and start the containers
+# Frontend environment
+cat > frontend/.env << EOF
+REACT_APP_API_URL=http://localhost:5000
+EOF
+```
 
-docker compose up --build
-
-
-#### Step 4. Access the application
-| Service                 | URL                                            | Description         |
-| ----------------------- | ---------------------------------------------- | ------------------- |
-| **Frontend (React)**    | [http://localhost:5173](http://localhost:3000) | User interface      |
-| **Flask API (Backend)** | [http://localhost:5000](http://localhost:5000) | REST API            |
-| **pgAdmin**             | [http://localhost:5050](http://localhost:5050) | Database management |
-
-
-## pgAdmin login credentials:
-Email: admin@csr.com
-Password: admin123
-
-## Database connection details:
-Host: db
-Port: 5432
-Username: csruser
-Password: csrpass
+#### Step 3. Start with Docker Compose
+```bash
+docker compose up --build -d
+```
 
 
 
@@ -198,5 +217,66 @@ SECRET_KEY=supersecretkey
 FLASK_ENV=development
 
 Frontend .env
-VITE_API_URL=http://localhost:5000
+REACT_APP_API_URL=http://localhost:5000
+
+---
+
+## 🛠️ Troubleshooting
+
+### Common Issues
+
+**🐳 Docker Issues:**
+- **"Docker not found"**: Install Docker Desktop from https://docker.com
+- **Port conflicts**: Change ports in `docker-compose.yml` if needed
+- **Permission errors**: Run `docker` commands with `sudo` on Linux
+
+**🌐 Connection Issues:**
+- **Frontend can't reach backend**: Check if backend is running on port 5000
+- **Database connection failed**: Wait 30 seconds after startup for PostgreSQL
+- **CORS errors**: Backend has CORS enabled for `localhost:3000`
+
+**🔧 Development Issues:**
+- **Hot reload not working**: Ensure volumes are mounted correctly
+- **Environment variables**: Check `.env` files exist and have correct values
+- **Dependencies**: Run `docker compose build --no-cache` to rebuild
+
+### Platform-Specific Notes
+
+**Windows:**
+- Use Git Bash or PowerShell for best compatibility
+- Docker Desktop must be running
+- WSL2 backend recommended for better performance
+
+**macOS:**
+- Docker Desktop requires macOS 10.15+
+- Apple Silicon (M1/M2) users: Images build for ARM64 automatically
+- Intel Macs: Standard x86_64 images
+
+**Linux:**
+- Install Docker Engine + Docker Compose separately
+- Add user to docker group: `sudo usermod -aG docker $USER`
+- Restart shell after group change
+
+### Getting Help
+
+**View Logs:**
+```bash
+docker compose logs -f          # All services
+docker compose logs -f web      # Backend only
+docker compose logs -f frontend # Frontend only
+```
+
+**Reset Everything:**
+```bash
+docker compose down -v
+docker system prune -f
+./setup.sh  # or setup.bat on Windows
+```
+
+**Manual Database Reset:**
+```bash
+docker compose exec web flask db downgrade
+docker compose exec web flask db upgrade
+docker compose exec web python -m app.seed_data
+```
 

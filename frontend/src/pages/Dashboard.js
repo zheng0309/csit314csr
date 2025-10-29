@@ -41,8 +41,8 @@ const Dashboard = () => {
   const fetchStats = async () => {
     try {
       const [requestsRes, usersRes] = await Promise.all([
-        axios.get('http://localhost:5001/requests'),
-        axios.get('http://localhost:5001/users'),
+        axios.get('http://localhost:5000/requests'),
+        axios.get('http://localhost:5000/users'),
       ]);
 
       const requests = requestsRes.data;

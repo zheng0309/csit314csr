@@ -13,7 +13,11 @@ with app.app_context():
             db.session.add(user)
 
         for i in range(100):
-            req = PinRequest(title=f"Request {i+1}", description="Sample request")
+            req = PinRequest(
+                title=f"Request {i+1}", 
+                description="Sample request for community volunteer work",
+                status="active" if i % 3 == 0 else "completed" if i % 3 == 1 else None
+            )
             db.session.add(req)
 
         db.session.commit()

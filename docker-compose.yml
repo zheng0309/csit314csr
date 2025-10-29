@@ -31,5 +31,19 @@ services:
     volumes:
       - .:/app
 
+  frontend:
+    build: ./frontend
+    container_name: csr_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:5000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - web
+
 volumes:
   csr_db_data:
