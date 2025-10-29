@@ -95,8 +95,8 @@ The setup script will automatically:
 - ✅ Check Docker installation
 - ✅ Create environment files
 - ✅ Build and start all services
-- ✅ Initialize database with sample data
-- ✅ Provide access URLs
+- ✅ Initialize database with comprehensive seed data
+- ✅ Provide access URLs and credentials
 
 ### **📱 Access Your Application**
 | Service                 | URL                                            | Description         |
