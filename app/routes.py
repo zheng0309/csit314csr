@@ -198,29 +198,51 @@ def get_open_help_requests():
 # ---------------------------------
 # 📦Accepted requests (For CSR)
 # ---------------------------------
-@main.route("/api/requests/<int:request_id>/accept", methods=["POST"])
+@main.route('/api/csr/accepted/<int:csr_id>', methods=['GET'])
 @cross_origin()
-def accept_request(request_id):
-    data = request.get_json()
-    user_id = data.get("user_id")
+def get_accepted_requests(csr_id):
+    matches = MatchHistory.query.filter_by(csr_id=csr_id).filter(
+        MatchHistory.match_status != 'completed'
+    ).all()
 
-    req = PinRequest.query.get(request_id)
-    if not req:
-        return jsonify({"error": "Request not found"}), 404
-    
-    # update status & assign CSR
-    req.status = "accepted"
-    req.csr_id = user_id  
+    data = []
+    for m in matches:
+        req = PinRequest.query.get(m.request_id)
+        if req:
+            data.append({
+                "match_id": m.match_history_id,
+                "request_id": m.request_id,
+                "title": req.title,
+                "description": req.description,
+                "status": req.status,
+                "urgency": req.urgency,
+                "location": req.location,
+                "matched_at": m.matched_at
+            })
 
-    db.session.commit()
+    return jsonify(data), 200
 
-    return jsonify({
-        "message": "Request accepted",
-        "request": {
-            "id": req.pin_requests_id,
-            "title": req.title,
-            "status": req.status,
-            "csr_id": req.csr_id
-        }
-    }), 200
+# ---------------------------------
+# 📦Completed requests (For CSR)
+# ---------------------------------
+@main.route('/api/csr/completed/<int:csr_id>', methods=['GET'])
+@cross_origin()
+def get_completed_requests(csr_id):
+    matches = MatchHistory.query.filter_by(csr_id=csr_id, match_status="completed").all()
 
+    data = []
+    for m in matches:
+        req = PinRequest.query.get(m.request_id)
+        if req:
+            data.append({
+                "match_id": m.match_history_id,
+                "request_id": m.request_id,
+                "title": req.title,
+                "description": req.description,
+                "status": req.status,
+                "urgency": req.urgency,
+                "location": req.location,
+                "completed_at": req.completed_at
+            })
+
+    return jsonify(data), 200
