@@ -12,6 +12,17 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { Link as RouterLink } from 'react-router-dom';
+
+const toArray = (data) => {
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== 'object') return [];
+  if (Array.isArray(data.requests)) return data.requests;
+  if (Array.isArray(data.items)) return data.items;
+  if (Array.isArray(data.results)) return data.results;
+  // last resort: treat object values as a list
+  return Object.values(data).filter(Boolean);
+};
 
 const CSRDashboard = () => {
   const theme = useTheme();
@@ -83,11 +94,15 @@ const CSRDashboard = () => {
         axios.get('/api/csr/shortlist'),           // shortlisted by current CSR
       ]);
 
-      setRequests(reqRes.data || []);
-      setUsersCount(usersRes.data?.count ?? 0);
-      setAccepted(acceptedRes.data || []);
-      setCompleted(completedRes.data || []);
-      setShortlist(shortlistRes.data || []);
+      setRequests(toArray(reqRes?.data));
+      setAccepted(toArray(acceptedRes?.data));
+      setCompleted(toArray(completedRes?.data));
+      setShortlist(toArray(shortlistRes?.data));
+      setUsersCount(
+        typeof usersRes?.data?.count === 'number'
+          ? usersRes.data.count
+          : Array.isArray(usersRes?.data) ? usersRes.data.length : 0
+      );
     } catch (e) {
       console.error(e);
       setToast({ open: true, msg: 'Failed to fetch data', severity: 'error' });
@@ -490,7 +505,19 @@ const CSRDashboard = () => {
                         <RequestCard
                           r={r}
                           actions={
+                            <>
                             <Chip variant="outlined" color="success" label={`Completed • ${new Date(r.completedAt).toLocaleDateString()}`} />
+                            <Button
+                              component={RouterLink}
+                              to={`/requests/${r.id}`}
+                              size="small"
+                              variant="outlined"
+                              startIcon={<Info />}
+                              sx={{ ml: 1 }}
+                            >
+                              Details
+                            </Button>
+                            </>
                           }
                         />
                       </Grid>

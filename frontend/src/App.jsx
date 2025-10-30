@@ -6,6 +6,7 @@ import "./App.css";
 import Dashboard from "/src/dashboard.jsx";
 import CSRDashboard from "/src/CSRDashboard.jsx";
 import PMDashboard from "/src/PMDashboard.jsx";
+import ViewDetails from "/src/viewDetails.jsx";
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/csrdashboard" element={<CSRDashboard />} />
         <Route path="/pmdashboard" element={<PMDashboard />} />
+        <Route path="/requests/:id" element={<ViewDetails />} />
       </Routes>
     </Router>
   );
