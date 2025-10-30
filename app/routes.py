@@ -31,7 +31,7 @@ def login():
         return jsonify({"error": "Invalid credentials"}), 401
 
     # ✅ Allow both CSR and PIN users
-    if user.role not in ["PIN", "CSR"]:
+    if user.role not in ["pin", "csr_rep"]:
         return jsonify({"error": f"User role '{user.role}' is not recognized"}), 403
 
     # ✅ Store session data
@@ -194,3 +194,33 @@ def get_open_help_requests():
         })
 
     return jsonify(data), 200
+
+# ---------------------------------
+# 📦Accepted requests (For CSR)
+# ---------------------------------
+@main.route("/api/requests/<int:request_id>/accept", methods=["POST"])
+@cross_origin()
+def accept_request(request_id):
+    data = request.get_json()
+    user_id = data.get("user_id")
+
+    req = PinRequest.query.get(request_id)
+    if not req:
+        return jsonify({"error": "Request not found"}), 404
+    
+    # update status & assign CSR
+    req.status = "accepted"
+    req.csr_id = user_id  
+
+    db.session.commit()
+
+    return jsonify({
+        "message": "Request accepted",
+        "request": {
+            "id": req.pin_requests_id,
+            "title": req.title,
+            "status": req.status,
+            "csr_id": req.csr_id
+        }
+    }), 200
+

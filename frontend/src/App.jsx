@@ -20,8 +20,8 @@ export default function App() {
     <Router>
       <Routes>
         <Route path="/" element={<LoginPage />} />
-        <Route path="/dashboard" element={<Dashboard />} /> {/* PIN */}
-        <Route path="/csrdashboard" element={<CSRDashboard />} /> {/* CSR */}
+        <Route path="/dashboard" element={<Dashboard />} /> {/* pin */}
+        <Route path="/csrdashboard" element={<CSRDashboard />} /> {/* csr_rep */}
       </Routes>
     </Router>
   );
@@ -86,9 +86,9 @@ function LoginCard() {
         localStorage.setItem("user", JSON.stringify(data.user));
 
         // ✅ Redirect based on role
-        if (data.user.role === "CSR") {
+        if (data.user.role === "csr_rep") {
           navigate("/csrdashboard");
-        } else if (data.user.role === "PIN") {
+        } else if (data.user.role === "pin") {
           navigate("/dashboard");
         } else {
           alert("⚠️ Unknown role, staying on login page.");

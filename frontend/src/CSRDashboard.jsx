@@ -53,7 +53,7 @@ const CSRDashboard = () => {
   // ----------- Derived stats ----------
   const stats = useMemo(() => {
     const totalRequests = requests.length;
-    const activeRequests = requests.filter(r => (r.status ?? 'active') === 'active').length;
+    const activeRequests = requests.filter(r => (r.status ?? 'open') === 'open').length;
     const completionRate = requests.length
       ? Math.round((requests.filter(r => r.status === 'completed').length / requests.length) * 100)
       : 0;
@@ -133,7 +133,7 @@ const CSRDashboard = () => {
 
   const openFiltered = useMemo(() => {
     return requests
-      .filter(r => (r.status ?? 'active') === 'active')
+      .filter(r => (r.status ?? 'open') === 'open')
       .filter(r => (category === 'all' ? true : r.category === category))
       .filter(r => (urgentOnly ? !!r.urgent : true))
       .filter(r => {
