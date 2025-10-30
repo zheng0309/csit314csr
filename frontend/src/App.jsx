@@ -14,6 +14,8 @@ import {
 import "./App.css";
 import CSRDashboard from "/src/CSRDashboard.jsx";
 import Dashboard from "/src/Dashboard.jsx";
+import PMDashboard from "/src/PMDashboard.jsx";
+import ViewDetails from "/src/viewDetails.jsx";
 
 export default function App() {
   return (
@@ -22,6 +24,8 @@ export default function App() {
         <Route path="/" element={<LoginPage />} />
         <Route path="/dashboard" element={<Dashboard />} /> {/* pin */}
         <Route path="/csrdashboard" element={<CSRDashboard />} /> {/* csr_rep */}
+        <Route path="/pmdashboard" element={<PMDashboard />} />
+        <Route path="/requests/:id" element={<ViewDetails />} />
       </Routes>
     </Router>
   );
