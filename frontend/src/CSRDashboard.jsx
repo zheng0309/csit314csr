@@ -120,32 +120,13 @@ const CSRDashboard = () => {
     }
   };
 
-  useEffect(() => {
-    const user = JSON.parse(localStorage.getItem("user"));
-    if (!user) return;
-
-    // Accepted
-    fetch(`http://localhost:5000/api/csr/accepted/${user.users_id}`)
-      .then(res => res.json())
-      .then(setAccepted)
-      .catch(console.error);
-
-  // Completed
-    fetch(`http://localhost:5000/api/csr/completed/${user.users_id}`)
-      .then(res => res.json())
-      .then(setCompleted)
-      .catch(console.error);
-      
-    fetchAll(); }, []);
+  useEffect(() => {fetchAll(); }, []);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     await fetchAll();
     setRefreshing(false);
   };
-  console.log("Accepted data:", accepted);
-  console.log("Completed data:", completed);
-  console.log("Logged in user:", user);
 
   // ---------- Logout ----------
   const handleLogout = async () => {
@@ -494,16 +475,11 @@ const CSRDashboard = () => {
                     }
                   />
                 ))}
-                {accepted.length > 0 ? accepted.map(a => (
-  <div key={a.match_id}>
-    <h4>{a.title}</h4>
-    <p>{a.description}</p>
-    <small>Urgency: {a.urgency} | Location: {a.location}</small>
-  </div>
-)) : <p>No accepted requests yet.</p>}
-
-                  
-                
+                {accepted.length === 0 && (
+                  <Box sx={{ p: 4, textAlign: 'center', opacity: 0.8 }}>
+                    <Typography>You have no accepted requests yet.</Typography>
+                  </Box>
+                )}               
               </Stack>
             )}
 
@@ -561,14 +537,11 @@ const CSRDashboard = () => {
                       </Grid>
                     ))
                   }
-                  {completed.length > 0 ? completed.map(c => (
-  <div key={c.match_id}>
-    <h4>{c.title}</h4>
-    <p>{c.description}</p>
-    <small>Completed At: {c.completed_at || "N/A"}</small>
-  </div>
-)) : <p>No completed requests yet.</p>}
-
+                  {completed.length === 0 && (
+                    <Box sx={{ p: 4, width: '100%', textAlign: 'center', opacity: 0.8 }}>
+                      <Typography>No completed requests yet.</Typography>
+                    </Box>
+                  )}
                 </Grid>
               </Stack>
             )}
