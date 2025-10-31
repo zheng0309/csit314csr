@@ -13,18 +13,56 @@ import {
 } from "lucide-react";
 import "./App.css";
 import CSRDashboard from "/src/CSRDashboard.jsx";
-import Dashboard from "/src/Dashboard.jsx";
+import PINDashboard from "/src/PINDashboard.jsx";
 import PMDashboard from "/src/PMDashboard.jsx";
+import AdminDashboard from "/src/AdminDashboard.jsx";
 import ViewDetails from "/src/viewDetails.jsx";
+
+function ProtectedRoute({ children, allowed }) {
+  const raw = typeof window !== "undefined" ? localStorage.getItem("user") : null;
+  const user = raw ? JSON.parse(raw) : null;
+
+  if (!user) {
+    return <LoginPage />;
+  }
+
+  if (allowed && !allowed.includes(user.role)) {
+    return <LoginPage />;
+  }
+
+  return children;
+}
 
 export default function App() {
   return (
     <Router>
       <Routes>
         <Route path="/" element={<LoginPage />} />
-        <Route path="/dashboard" element={<Dashboard />} /> {/* pin */}
-        <Route path="/csrdashboard" element={<CSRDashboard />} /> {/* csr_rep */}
-        <Route path="/pmdashboard" element={<PMDashboard />} />
+        <Route
+          path="/pindashboard"
+          element={
+            <ProtectedRoute allowed={["pin"]}>
+              <PINDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/pmdashboard"
+          element={
+            <ProtectedRoute allowed={["platform_manager"]}>
+              <PMDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admindashboard"
+          element={
+            <ProtectedRoute allowed={["admin"]}>
+              <AdminDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/csrdashboard" element={<CSRDashboard />} />
         <Route path="/requests/:id" element={<ViewDetails />} />
       </Routes>
     </Router>
@@ -90,10 +128,14 @@ function LoginCard() {
         localStorage.setItem("user", JSON.stringify(data.user));
 
         // ✅ Redirect based on role
-        if (data.user.role === "csr_rep") {
+        if (data.user.role === "pin") {
+          navigate("/pindashboard");
+        } else if (data.user.role === "platform_manager") {
+          navigate("/pmdashboard");
+        } else if (data.user.role === "admin") {
+          navigate("/admindashboard");
+        } else if (data.user.role === "csr_rep") {
           navigate("/csrdashboard");
-        } else if (data.user.role === "pin") {
-          navigate("/dashboard");
         } else {
           alert("⚠️ Unknown role, staying on login page.");
         }

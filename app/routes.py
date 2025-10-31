@@ -15,7 +15,7 @@ def health_check():
 
 
 # ---------------------------------
-# 🔐 Login (CSR + PIN)
+# 🔐 Login (PIN, PM, Admin, CSR)
 # ---------------------------------
 @main.route('/api/login', methods=['POST'])
 @cross_origin()
@@ -30,8 +30,17 @@ def login():
     if not user:
         return jsonify({"error": "Invalid credentials"}), 401
 
-    # ✅ Allow both CSR and PIN users
-    if user.role not in ["pin", "csr_rep"]:
+    # ✅ Normalize role values from DB (handles different casing/labels from seed)
+    role_map = {
+        "pin": "pin", "PIN": "pin",
+        "csr_rep": "csr_rep", "CSR Rep": "csr_rep", "CSR": "csr_rep",
+        "platform_manager": "platform_manager", "Platform Manager": "platform_manager", "PM": "platform_manager",
+        "admin": "admin", "Admin": "admin"
+    }
+    normalized_role = role_map.get(user.role, None)
+
+    # ✅ Allow PIN, Platform Manager, Admin, and CSR users
+    if normalized_role not in ["pin", "platform_manager", "admin", "csr_rep"]:
         return jsonify({"error": f"User role '{user.role}' is not recognized"}), 403
 
     # ✅ Store session data
@@ -39,7 +48,7 @@ def login():
         "users_id": user.users_id,
         "name": user.name,
         "email": user.email,
-        "role": user.role
+        "role": normalized_role
     }
 
     return jsonify({
@@ -48,7 +57,7 @@ def login():
             "users_id": user.users_id,
             "name": user.name,
             "email": user.email,
-            "role": user.role
+            "role": normalized_role
         }
     }), 200
 
