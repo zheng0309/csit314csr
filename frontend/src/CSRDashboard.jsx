@@ -80,6 +80,10 @@ const CSRDashboard = () => {
   // ---------- Fetch ----------
   const fetchAll = async () => {
     try {
+      // Get logged-in CSR id
+      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      const csrId = user?.users_id;
+
       // Use absolute backend URLs to avoid dev-server proxy confusion
       const [
         reqRes,
@@ -88,30 +92,85 @@ const CSRDashboard = () => {
         completedRes,
         shortlistRes,
       ] = await Promise.all([
-        axios.get('http://localhost:5000/requests'),
-        axios.get('http://localhost:5000/users'),              // returns array of users
-        // The following endpoints may not exist on backend yet; fallback handled below
-        axios.get('http://localhost:5000/api/csr/accepted').catch(() => ({ data: [] })),
-        axios.get('http://localhost:5000/api/csr/completed').catch(() => ({ data: [] })),
-        axios.get('http://localhost:5000/api/csr/shortlist').catch(() => ({ data: [] })),
+        axios.get('http://localhost:5000/api/help_requests/open').catch(() => ({ data: [] })),
+        axios.get('http://localhost:5000/users').catch(() => ({ data: [] })),
+        (csrId ? axios.get(`http://localhost:5000/api/csr/accepted/${csrId}`) : Promise.resolve({ data: [] })).catch(() => ({ data: [] })),
+        (csrId ? axios.get(`http://localhost:5000/api/csr/completed/${csrId}`) : Promise.resolve({ data: [] })).catch(() => ({ data: [] })),
+        (csrId ? axios.get(`http://localhost:5000/api/csr/shortlist/${csrId}`) : Promise.resolve({ data: [] })).catch(() => ({ data: [] })),
       ]);
 
-      const requestsData = reqRes.data || [];
+      const requestsData = toArray(reqRes?.data);
+      let acceptedData = toArray(acceptedRes?.data).map(r => ({
+        id: r.request_id ?? r.id,
+        title: r.title,
+        description: r.description,
+        status: r.status,
+        urgency: r.urgency,
+        location: r.location,
+        matchedAt: r.matched_at ?? r.matchedAt,
+      }));
+      let completedData = toArray(completedRes?.data).map(r => ({
+        id: r.request_id ?? r.id,
+        title: r.title,
+        description: r.description,
+        status: r.status,
+        urgency: r.urgency,
+        location: r.location,
+        completedAt: r.completed_at ?? r.completedAt,
+      }));
+      let shortlistData = toArray(shortlistRes?.data).map(r => ({
+        id: r.id ?? r.request_id,
+        title: r.title,
+        description: r.description,
+        status: r.status,
+        urgency: r.urgency,
+        location: r.location,
+        category: r.category,
+      }));
+
+      // Fallback to global lists if CSR-specific lists are empty
+      if (!acceptedData.length) {
+        const globalAccepted = await axios.get('http://localhost:5000/api/csr/accepted').catch(() => ({ data: [] }));
+        acceptedData = toArray(globalAccepted?.data).map(r => ({
+          id: r.request_id ?? r.id,
+          title: r.title,
+          description: r.description,
+          status: r.status,
+          urgency: r.urgency,
+          location: r.location,
+          matchedAt: r.matched_at ?? r.matchedAt,
+        }));
+      }
+      if (!completedData.length) {
+        const globalCompleted = await axios.get('http://localhost:5000/api/csr/completed').catch(() => ({ data: [] }));
+        completedData = toArray(globalCompleted?.data).map(r => ({
+          id: r.request_id ?? r.id,
+          title: r.title,
+          description: r.description,
+          status: r.status,
+          urgency: r.urgency,
+          location: r.location,
+          completedAt: r.completed_at ?? r.completedAt,
+        }));
+      }
+      if (!shortlistData.length) {
+        const globalShortlist = await axios.get('http://localhost:5000/api/csr/shortlist').catch(() => ({ data: [] }));
+        shortlistData = toArray(globalShortlist?.data).map(r => ({
+          id: r.id ?? r.request_id,
+          title: r.title,
+          description: r.description,
+          status: r.status,
+          urgency: r.urgency,
+          location: r.location,
+          category: r.category,
+        }));
+      }
+
       setRequests(requestsData);
-      // usersRes returns array of users; setUsersCount accordingly
-      setUsersCount(Array.isArray(usersRes.data) ? usersRes.data.length : (usersRes.data?.count ?? 0));
-      setAccepted(acceptedRes.data || requestsData.filter(r => r.status === 'accepted'));
-      setCompleted(completedRes.data || requestsData.filter(r => r.status === 'completed'));
-      setShortlist(shortlistRes.data || requestsData.filter(r => r.status === 'shortlist'));
-      setRequests(toArray(reqRes?.data));
-      setAccepted(toArray(acceptedRes?.data));
-      setCompleted(toArray(completedRes?.data));
-      setShortlist(toArray(shortlistRes?.data));
-      setUsersCount(
-        typeof usersRes?.data?.count === 'number'
-          ? usersRes.data.count
-          : Array.isArray(usersRes?.data) ? usersRes.data.length : 0
-      );
+      setAccepted(acceptedData);
+      setCompleted(completedData);
+      setShortlist(shortlistData);
+      setUsersCount(Array.isArray(usersRes?.data) ? usersRes.data.length : (usersRes?.data?.count ?? 0));
     } catch (e) {
       console.error(e);
       setToast({ open: true, msg: 'Failed to fetch data', severity: 'error' });
@@ -170,7 +229,8 @@ const CSRDashboard = () => {
 
   const acceptRequest = async (reqId) => {
     try {
-      await axios.post(`http://localhost:5000/api/requests/${reqId}/accept`).catch(() => {});
+      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      await axios.post(`http://localhost:5000/api/requests/${reqId}/accept`, { csr_id: user?.users_id }).catch(() => {});
       setToast({ open: true, msg: 'Request accepted', severity: 'success' });
       await fetchAll();
     } catch (e) {
@@ -181,7 +241,8 @@ const CSRDashboard = () => {
 
   const shortlistRequest = async (reqId) => {
     try {
-      await axios.post(`http://localhost:5000/api/requests/${reqId}/shortlist`).catch(() => {});
+      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      await axios.post(`http://localhost:5000/api/requests/${reqId}/shortlist`, { csr_id: user?.users_id }).catch(() => {});
       setToast({ open: true, msg: 'Added to shortlist', severity: 'success' });
       await fetchAll();
     } catch (e) {
@@ -192,7 +253,8 @@ const CSRDashboard = () => {
 
   const unshortlistRequest = async (reqId) => {
     try {
-      await axios.delete(`http://localhost:5000/api/requests/${reqId}/shortlist`).catch(() => {});
+      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      await axios.delete(`http://localhost:5000/api/requests/${reqId}/shortlist`, { data: { csr_id: user?.users_id } }).catch(() => {});
       setToast({ open: true, msg: 'Removed from shortlist', severity: 'info' });
       await fetchAll();
     } catch (e) {
@@ -203,7 +265,8 @@ const CSRDashboard = () => {
 
   const updateAcceptedStatus = async (reqId, status) => {
     try {
-      await axios.patch(`http://localhost:5000/api/csr/accepted/${reqId}`, { status }).catch(() => {});
+      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      await axios.patch(`http://localhost:5000/api/csr/accepted/${reqId}`, { status, csr_id: user?.users_id }).catch(() => {});
       setToast({ open: true, msg: 'Status updated', severity: 'success' });
       await fetchAll();
     } catch (e) {
@@ -214,7 +277,8 @@ const CSRDashboard = () => {
 
   const removeMyself = async (reqId) => {
     try {
-      await axios.post(`http://localhost:5000/api/csr/accepted/${reqId}/remove`).catch(() => {});
+      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      await axios.post(`http://localhost:5000/api/csr/accepted/${reqId}/remove`, { csr_id: user?.users_id }).catch(() => {});
       setToast({ open: true, msg: 'Removed from request', severity: 'info' });
       await fetchAll();
     } catch (e) {
@@ -227,7 +291,8 @@ const CSRDashboard = () => {
 
   const completeRequest = async () => {
     try {
-      await axios.post(`http://localhost:5000/api/csr/accepted/${completeReq.id}/complete`, { note: completionNote }).catch(() => {});
+      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      await axios.post(`http://localhost:5000/api/csr/accepted/${completeReq.id}/complete`, { note: completionNote, csr_id: user?.users_id }).catch(() => {});
       setToast({ open: true, msg: 'Request completed', severity: 'success' });
       setCompleteOpen(false);
       await fetchAll();
