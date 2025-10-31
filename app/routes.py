@@ -92,6 +92,33 @@ def get_requests():
 
 
 # ---------------------------------
+# 🔎 Get Single Request By ID
+# ---------------------------------
+@main.route('/api/requests/<int:req_id>', methods=['GET'])
+@cross_origin()
+def get_request_by_id(req_id):
+    req = PinRequest.query.get(req_id)
+    if not req:
+        return jsonify({"error": "Request not found"}), 404
+
+    data = {
+        "id": req.pin_requests_id,
+        "title": req.title,
+        "description": req.description,
+        "category": req.category.name if req.category else None,
+        "location": req.location,
+        "urgency": req.urgency,
+        "status": req.status,
+        "requester_name": req.pin_user.name if req.pin_user else None,
+        "user_id": req.user_id,
+        "created_at": req.created_at.isoformat() if req.created_at else None,
+        "completed_at": req.completed_at.isoformat() if req.completed_at else None,
+        "completion_note": req.completion_note,
+    }
+
+    return jsonify(data), 200
+
+# ---------------------------------
 # 👥 Get All Users
 # ---------------------------------
 @main.route('/users', methods=['GET'])

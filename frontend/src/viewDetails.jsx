@@ -5,6 +5,7 @@ import {
 } from '@mui/material';
 import { ArrowBack } from '@mui/icons-material';
 import { useNavigate, useParams } from 'react-router-dom';
+import axios from 'axios';
 
 
 export default function ViewDetails() {
@@ -17,9 +18,23 @@ export default function ViewDetails() {
   useEffect(() => {
     (async () => {
       try {
-        const d = await fetchCompletedById(id);
-        setData(d);
-        if (USE_MOCKS) setToast({ open: true, msg: 'Mock mode — backend not required', severity: 'info' });
+        const res = await axios.get(`http://localhost:5000/api/requests/${id}`).catch(() => ({ data: null }));
+        if (res && res.data && !res.data.error) {
+          const d = res.data;
+          setData({
+            id: d.id,
+            title: d.title,
+            description: d.description,
+            category: d.category,
+            location: d.location,
+            status: d.status,
+            completedAt: d.completed_at || d.completedAt,
+            note: d.completion_note || d.note,
+            feedback: Array.isArray(d.feedback) ? d.feedback : [],
+          });
+        } else {
+          setData(null);
+        }
       } catch (e) {
         console.error(e);
         setToast({ open: true, msg: 'Failed to load details', severity: 'error' });
