@@ -1,6 +1,6 @@
-# 🏢 CSIT314 Group Project — CSR Volunteer Matching System
+# CSIT314 Group Project — CSR Volunteer Matching System
 
-## 🌐 Full-Stack Corporate Social Responsibility Platform
+## Full-Stack Corporate Social Responsibility Platform
 
 ### **Technology Stack**
 - **Frontend:** React (Node.js, npm, Vite)
@@ -11,7 +11,7 @@
 
 ---
 
-## 📘 Project Overview
+## Project Overview
 
 This repository contains the **Corporate Social Responsibility (CSR) Volunteer Matching System** developed for **CSIT314 – Software Development Methodologies**.
 
@@ -19,9 +19,9 @@ The system connects **Corporate Volunteers (CSR Representatives)** with **Person
 
 ---
 
-## 🚀 Main Features
+## Main Features
 
-### 🧩 Core System
+### Core System
 - Multi-role support (**Admin**, **CSR Representative**, **PIN**)
 - Manage and track volunteer requests
 - Search and shortlist volunteer opportunities
@@ -30,7 +30,7 @@ The system connects **Corporate Volunteers (CSR Representatives)** with **Person
 - RESTful API built with Flask
 - Continuous Integration with **GitHub Actions**
 
-### 💻 Frontend Additions
+### Frontend Additions
 - Built with **React + Vite**
 - Responsive and modern UI (using TailwindCSS)
 - Interacts with Flask backend via REST API
@@ -73,10 +73,10 @@ csit314-csr/
 
 
 
-## ⚙️ Quick Setup Instructions
+## Quick Setup Instructions
 
-### **🚀 One-Command Setup (Recommended)**
-
+### One-Command Setup (Recommended)
+ 
 **For macOS/Linux:**
 ```bash
 git clone https://github.com/zheng0309/csit314csr.git
@@ -211,7 +211,7 @@ npm run build
 
 
 
-## 🧪 Continuous Integration (CI/CD)
+## Continuous Integration (CI/CD)
 
 This project uses GitHub Actions to automatically:
 
@@ -231,15 +231,25 @@ View results under the Actions tab in GitHub.
 ### Continuous Deployment (CD)
 
 After CI succeeds on `main`, the repository publishes a Docker image to GitHub Container Registry (GHCR).
-- Image name: `ghcr.io/<your-github-username>/csit314csr`
-- Tags published: `latest` and the commit SHA (e.g. `ghcr.io/<user>/csit314csr:<sha>`)
 
 The publish step is configured to run only for pushes to `main`. To view published images, go to your GitHub profile or repository Packages tab (or visit `https://github.com/<your-github-username>?tab=packages`).
 
 If your organization restricts `GITHUB_TOKEN` package write access, configure a Personal Access Token (PAT) with `write:packages` scope and set it as a repository secret, then update the workflow login step accordingly.
 
+### Required repository secrets for CI
 
-## 🛠️ Development Commands
+The CI workflow expects the following repository secrets to be configured (Repository Settings → Secrets → Actions):
+
+- `CI_DB_USER` - Username for the test Postgres (used by CI when connecting to the service)
+- `CI_DB_PASS` - Password for the test Postgres
+- `CI_DB_NAME` - Database name used in tests (e.g. `csrdb`)
+- `CI_SECRET_KEY` - Flask SECRET_KEY value for the test run
+- (Optional) `GHCR_PAT` - Personal Access Token with `write:packages` if `GITHUB_TOKEN` lacks package write permissions
+
+If these are not set, the workflow will still run but won't have secure credentials and may fail depending on your repository settings. For local testing you can leave defaults in `.env` for development.
+
+
+## Development Commands
 
 Run database migrations manually:
 
@@ -278,21 +288,21 @@ REACT_APP_API_URL=http://localhost:5000
 
 ---
 
-## 🛠️ Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
-**🐳 Docker Issues:**
+**Docker Issues:**
 - **"Docker not found"**: Install Docker Desktop from https://docker.com
 - **Port conflicts**: Change ports in `docker-compose.yml` if needed
 - **Permission errors**: Run `docker` commands with `sudo` on Linux
 
-**🌐 Connection Issues:**
+**Connection Issues:**
 - **Frontend can't reach backend**: Check if backend is running on port 5000
 - **Database connection failed**: Wait 30 seconds after startup for PostgreSQL
 - **CORS errors**: Backend has CORS enabled for `localhost:3000`
 
-**🔧 Development Issues:**
+**Development Issues:**
 - **Hot reload not working**: Ensure volumes are mounted correctly
 - **Environment variables**: Check `.env` files exist and have correct values
 - **Dependencies**: Run `docker compose build --no-cache` to rebuild
