@@ -65,3 +65,8 @@ Thumbs.db
 *.bak
 *.swp
 docker-compose.override.yml
+
+# Frontend dependencies (installed locally)
+frontend/node_modules/
+frontend/frontend/node_modules/
+node_modules/
