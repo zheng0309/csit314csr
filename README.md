@@ -194,6 +194,16 @@ Workflow file: .github/workflows/ci.yml
 Each push or pull request to the main branch triggers the CI pipeline.
 View results under the Actions tab in GitHub.
 
+### Continuous Deployment (CD)
+
+After CI succeeds on `main`, the repository publishes a Docker image to GitHub Container Registry (GHCR).
+- Image name: `ghcr.io/<your-github-username>/csit314csr`
+- Tags published: `latest` and the commit SHA (e.g. `ghcr.io/<user>/csit314csr:<sha>`)
+
+The publish step is configured to run only for pushes to `main`. To view published images, go to your GitHub profile or repository Packages tab (or visit `https://github.com/<your-github-username>?tab=packages`).
+
+If your organization restricts `GITHUB_TOKEN` package write access, configure a Personal Access Token (PAT) with `write:packages` scope and set it as a repository secret, then update the workflow login step accordingly.
+
 
 ## 🛠️ Development Commands
 
