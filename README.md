@@ -98,6 +98,40 @@ The setup script will automatically:
 - ✅ Initialize database with comprehensive seed data
 - ✅ Provide access URLs and credentials
 
+#### External DB mode
+
+If you already have a hosted PostgreSQL instance (for example, a cloud DB), you can run the project with the frontend and backend while using your external database.
+
+Usage (macOS/Linux):
+```bash
+./setup.sh --external-db
+```
+
+Usage (Windows):
+```cmd
+setup.bat --external-db
+```
+
+When using `--external-db` the script will NOT create a local `.env` containing database credentials. You must provide a private `.env` file in the project root containing at least:
+
+```
+DB_HOST=your-db-host
+DB_PORT=5432
+DB_USER=youruser
+DB_PASS=yourpass
+DB_NAME=yourdb
+SECRET_KEY=a-very-secret-key
+```
+
+The repository includes `docker-compose.external-db.yml` which runs only the `web` (Flask) and `frontend` services and reads DB connection information from `.env`.
+
+If you prefer to run the compose command manually:
+
+```bash
+# Use the external-db compose file
+docker compose -f docker-compose.external-db.yml up --build -d
+```
+
 ### **📱 Access Your Application**
 | Service                 | URL                                            | Description         |
 | ----------------------- | ---------------------------------------------- | ------------------- |
@@ -193,6 +227,16 @@ Workflow file: .github/workflows/ci.yml
 
 Each push or pull request to the main branch triggers the CI pipeline.
 View results under the Actions tab in GitHub.
+
+### Continuous Deployment (CD)
+
+After CI succeeds on `main`, the repository publishes a Docker image to GitHub Container Registry (GHCR).
+- Image name: `ghcr.io/<your-github-username>/csit314csr`
+- Tags published: `latest` and the commit SHA (e.g. `ghcr.io/<user>/csit314csr:<sha>`)
+
+The publish step is configured to run only for pushes to `main`. To view published images, go to your GitHub profile or repository Packages tab (or visit `https://github.com/<your-github-username>?tab=packages`).
+
+If your organization restricts `GITHUB_TOKEN` package write access, configure a Personal Access Token (PAT) with `write:packages` scope and set it as a repository secret, then update the workflow login step accordingly.
 
 
 ## 🛠️ Development Commands
