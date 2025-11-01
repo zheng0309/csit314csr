@@ -6,8 +6,14 @@ on:
   pull_request:
     branches: [ main ]
 
+# allow pushing packages (GHCR) when publishing
+permissions:
+  contents: read
+  packages: write
+
 jobs:
-  build:
+  backend:
+    name: Backend - tests & checks
     runs-on: ubuntu-latest
 
     services:
@@ -33,9 +39,28 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install Python dependencies
         run: |
           pip install -r requirements.txt
+
+      - name: Run backend tests (pytest)
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: csruser
+          DB_PASS: csrpass
+          DB_NAME: csrdb
+          SECRET_KEY: supersecret
+        run: |
+          python -m pytest -q
 
       - name: Run Flask app import check
         env:
@@ -48,6 +73,71 @@ jobs:
         run: |
           python -m flask --app app:create_app routes
 
-      - name: Build Docker image
+  frontend:
+    name: Frontend - build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install frontend dependencies
+        working-directory: frontend
         run: |
-          docker build -t csr-flask-app .
+          npm ci
+
+      - name: Test frontend
+        working-directory: frontend
+        env:
+          CI: true
+        run: |
+          npm test -- --watchAll=false --reporters=default
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm run build
+
+  publish:
+    name: Publish Docker image to GHCR
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/csit314csr:latest
+            ghcr.io/${{ github.repository_owner }}/csit314csr:${{ github.sha }}
