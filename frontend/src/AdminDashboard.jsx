@@ -62,9 +62,9 @@ export default function AdminDashboard(){
   const fetchAdminData = async () => {
     try{
       const [usersRes, statsRes, logsRes] = await Promise.all([
-        api.get('/api/admin/users'),
-        api.get('/api/admin/stats'),
-        api.get('/api/admin/activity-logs'),
+        axios.get('https://localhost:5000/api/admin/users'),
+        axios.get('https://localhost:5000/api/admin/stats'),
+        axios.get('https://localhost:5000/api/admin/activity-logs'),
       ]);
       setUsers(Array.isArray(usersRes.data) ? usersRes.data : (usersRes.data?.items||[]));
       setSystemStats(statsRes.data || {});
@@ -125,10 +125,10 @@ export default function AdminDashboard(){
       }
 
       if (editingUser){
-        await api.patch(`/api/admin/users/${editingUser.id}`, userForm);
+        await axios.patch(`https://localhost:5000/api/admin/users/${editingUser.id}`, userForm);
         setToast({ open:true, msg:'User updated successfully', severity:'success' });
       } else {
-        await api.post('/api/admin/users', userForm);
+        await axios.post('https://localhost:5000/api/admin/users', userForm);
         setToast({ open:true, msg:'User created successfully', severity:'success' });
       }
       setUserDialogOpen(false);
@@ -141,7 +141,7 @@ export default function AdminDashboard(){
 
   const toggleUserStatus = async (user)=>{
     try{
-      await api.patch(`/api/admin/users/${user.id}`, { active: !user.active });
+      await axios.patch(`https://localhost:5000/api/admin/users/${user.id}`, { active: !user.active });
       setToast({ open:true, msg:`User ${!user.active ? 'activated' : 'deactivated'}`, severity:'info' });
       await fetchAdminData();
     }catch(e){
@@ -167,7 +167,7 @@ export default function AdminDashboard(){
         return;
       }
 
-      await api.post(`/api/admin/users/${selectedUser.id}/reset-password`, {
+      await axios.post(`https://localhost:5000/api/admin/users/${selectedUser.id}/reset-password`, {
         newPassword: passwordForm.newPassword,
         forceReset: passwordForm.forceReset
       });
@@ -187,7 +187,7 @@ export default function AdminDashboard(){
 
   const deleteUser = async ()=>{
     try{
-      await api.delete(`/api/admin/users/${userToDelete.id}`);
+      await axios.delete(`https://localhost:5000/api/admin/users/${userToDelete.id}`);
       setToast({ open:true, msg:'User deleted successfully', severity:'info' });
       setDeleteDialogOpen(false);
       await fetchAdminData();

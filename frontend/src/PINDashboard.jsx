@@ -11,12 +11,13 @@ import {
   ContentCopy, Visibility, Favorite, Phone, Email, Print, CheckCircle,
   Cancel, Warning, History, Feedback, FilterList, Schedule
 } from '@mui/icons-material';
+import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
 // =============================================
 // PINDashboard Component
 // =============================================
-export default function PINDashboard(){
+const PINDashboard = () => {
   const navigate = useNavigate();
   const [tab, setTab] = useState(0); // 0 Active, 1 Completed, 2 History
   const [loading, setLoading] = useState(true);
@@ -59,9 +60,9 @@ export default function PINDashboard(){
   const fetchPINData = async () => {
     try{
       const [activeRes, completedRes, historyRes] = await Promise.all([
-        api.get('/api/pin/requests/active'),
-        api.get('/api/pin/requests/completed'),
-        api.get('/api/pin/requests/history'),
+        axios.get('https://localhost:5000/api/pin/requests/active'),
+        axios.get('https://localhost:5000/api/pin/requests/completed'),
+        axios.get('https://localhost:5000/api/pin/requests/history'),
       ]);
       setActiveRequests(Array.isArray(activeRes.data) ? activeRes.data : (activeRes.data?.items||[]));
       setCompletedRequests(Array.isArray(completedRes.data) ? completedRes.data : (completedRes.data?.items||[]));
@@ -141,13 +142,13 @@ export default function PINDashboard(){
       }
       
       if (editingRequest){
-        await api.patch(`/api/pin/requests/${editingRequest.id}`, requestForm);
+        await axios.patch(`https://localhost:5000/api/pin/requests/${editingRequest.id}`, requestForm);
         setToast({ open:true, msg:'Request updated successfully', severity:'success' });
       } else if (duplicatingRequest){
-        await api.post('/api/pin/requests', requestForm);
+        await axios.post('https://localhost:5000/api/pin/requests', requestForm);
         setToast({ open:true, msg:'Request duplicated successfully', severity:'success' });
       } else {
-        await api.post('/api/pin/requests', requestForm);
+        await axios.post('https://localhost:5000/api/pin/requests', requestForm);
         setToast({ open:true, msg:'Help request created successfully', severity:'success' });
       }
       setRequestDialogOpen(false);
@@ -160,7 +161,7 @@ export default function PINDashboard(){
 
   const markAsComplete = async (requestId)=>{
     try{
-      await api.patch(`/api/pin/requests/${requestId}`, { status: 'completed' });
+      await axios.patch(`https://localhost:5000/api/pin/requests/${requestId}`, { status: 'completed' });
       setToast({ open:true, msg:'Request marked as completed', severity:'success' });
       await fetchPINData();
     }catch(e){
@@ -171,7 +172,7 @@ export default function PINDashboard(){
 
   const markAsUrgent = async (requestId)=>{
     try{
-      await api.patch(`/api/pin/requests/${requestId}`, { urgency: 'urgent' });
+      await axios.patch(`https://localhost:5000/api/pin/requests/${requestId}`, { urgency: 'urgent' });
       setToast({ open:true, msg:'Request marked as urgent', severity:'warning' });
       await fetchPINData();
     }catch(e){
@@ -182,7 +183,7 @@ export default function PINDashboard(){
 
   const cancelRequest = async (requestId)=>{
     try{
-      await api.patch(`/api/pin/requests/${requestId}`, { status: 'cancelled' });
+      await axios.patch(`https://localhost:5000/api/pin/requests/${requestId}`, { status: 'cancelled' });
       setToast({ open:true, msg:'Request cancelled', severity:'info' });
       await fetchPINData();
     }catch(e){
@@ -193,7 +194,7 @@ export default function PINDashboard(){
 
   const deleteRequest = async (requestId)=>{
     try{
-      await api.delete(`/api/pin/requests/${requestId}`);
+      await axios.delete(`https://localhost:5000/api/pin/requests/${requestId}`);
       setToast({ open:true, msg:'Request deleted', severity:'info' });
       await fetchPINData();
     }catch(e){
@@ -215,7 +216,7 @@ export default function PINDashboard(){
 
   const submitFeedback = async ()=>{
     try{
-      await api.post(`/api/pin/requests/${selectedRequest.id}/feedback`, feedbackForm);
+      await axios.post(`https://localhost:5000/api/pin/requests/${selectedRequest.id}/feedback`, feedbackForm);
       setToast({ open:true, msg:'Thank you for your feedback!', severity:'success' });
       setFeedbackDialogOpen(false);
       await fetchPINData();
