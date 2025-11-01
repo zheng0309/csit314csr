@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    container_name: csr_web
+    command: /app/entrypoint.sh
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+
+  frontend:
+    build: ./frontend
+    container_name: csr_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+# Note: This compose file assumes your database is hosted externally.
+# Set DB_HOST, DB_PORT, DB_USER, DB_PASS and DB_NAME in your `.env` file
+# to point to the remote database. Example .env entries are in `.env.example`.
