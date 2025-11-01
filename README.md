@@ -194,6 +194,18 @@ Workflow file: .github/workflows/ci.yml
 Each push or pull request to the main branch triggers the CI pipeline.
 View results under the Actions tab in GitHub.
 
+### Required repository secrets for CI
+
+The CI workflow requires a few repository secrets to run securely when connecting to the test Postgres service and when running the app in CI:
+
+- `CI_DB_USER` - Username for the test Postgres (used by CI when connecting to the service)
+- `CI_DB_PASS` - Password for the test Postgres
+- `CI_DB_NAME` - Database name used in tests (e.g. `csrdb`)
+- `CI_SECRET_KEY` - Flask SECRET_KEY value for the test run
+- (Optional) `GHCR_PAT` - Personal Access Token with `write:packages` if your org restricts `GITHUB_TOKEN` package write access
+
+If these are not set the workflow may still run but could fail depending on repository permissions. Configure them in Repository Settings → Secrets → Actions.
+
 
 ## 🛠️ Development Commands
 
