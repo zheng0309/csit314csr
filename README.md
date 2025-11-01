@@ -1,6 +1,6 @@
-# 🏢 CSIT314 Group Project — CSR Volunteer Matching System
+# CSIT314 Group Project — CSR Volunteer Matching System
 
-## 🌐 Full-Stack Corporate Social Responsibility Platform
+## Full-Stack Corporate Social Responsibility Platform
 
 ### **Technology Stack**
 - **Frontend:** React (Node.js, npm, Vite)
@@ -11,7 +11,7 @@
 
 ---
 
-## 📘 Project Overview
+## Project Overview
 
 This repository contains the **Corporate Social Responsibility (CSR) Volunteer Matching System** developed for **CSIT314 – Software Development Methodologies**.
 
@@ -19,9 +19,9 @@ The system connects **Corporate Volunteers (CSR Representatives)** with **Person
 
 ---
 
-## 🚀 Main Features
+## Main Features
 
-### 🧩 Core System
+### Core System
 - Multi-role support (**Admin**, **CSR Representative**, **PIN**)
 - Manage and track volunteer requests
 - Search and shortlist volunteer opportunities
@@ -30,7 +30,7 @@ The system connects **Corporate Volunteers (CSR Representatives)** with **Person
 - RESTful API built with Flask
 - Continuous Integration with **GitHub Actions**
 
-### 💻 Frontend Additions
+### Frontend Additions
 - Built with **React + Vite**
 - Responsive and modern UI (using TailwindCSS)
 - Interacts with Flask backend via REST API
@@ -73,10 +73,10 @@ csit314-csr/
 
 
 
-## ⚙️ Quick Setup Instructions
+## Quick Setup Instructions
 
-### **🚀 One-Command Setup (Recommended)**
-
+### One-Command Setup (Recommended)
+ 
 **For macOS/Linux:**
 ```bash
 git clone https://github.com/zheng0309/csit314csr.git
@@ -97,6 +97,40 @@ The setup script will automatically:
 - ✅ Build and start all services
 - ✅ Initialize database with comprehensive seed data
 - ✅ Provide access URLs and credentials
+
+#### External DB mode
+
+If you already have a hosted PostgreSQL instance (for example, a cloud DB), you can run the project with the frontend and backend while using your external database.
+
+Usage (macOS/Linux):
+```bash
+./setup.sh --external-db
+```
+
+Usage (Windows):
+```cmd
+setup.bat --external-db
+```
+
+When using `--external-db` the script will NOT create a local `.env` containing database credentials. You must provide a private `.env` file in the project root containing at least:
+
+```
+DB_HOST=your-db-host
+DB_PORT=5432
+DB_USER=youruser
+DB_PASS=yourpass
+DB_NAME=yourdb
+SECRET_KEY=a-very-secret-key
+```
+
+The repository includes `docker-compose.external-db.yml` which runs only the `web` (Flask) and `frontend` services and reads DB connection information from `.env`.
+
+If you prefer to run the compose command manually:
+
+```bash
+# Use the external-db compose file
+docker compose -f docker-compose.external-db.yml up --build -d
+```
 
 ### **📱 Access Your Application**
 | Service                 | URL                                            | Description         |
@@ -177,7 +211,7 @@ npm run build
 
 
 
-## 🧪 Continuous Integration (CI/CD)
+## Continuous Integration (CI/CD)
 
 This project uses GitHub Actions to automatically:
 
@@ -194,6 +228,7 @@ Workflow file: .github/workflows/ci.yml
 Each push or pull request to the main branch triggers the CI pipeline.
 View results under the Actions tab in GitHub.
 
+<<<<<<< HEAD
 ### Required repository secrets for CI
 
 The CI workflow requires a few repository secrets to run securely when connecting to the test Postgres service and when running the app in CI:
@@ -206,8 +241,30 @@ The CI workflow requires a few repository secrets to run securely when connectin
 
 If these are not set the workflow may still run but could fail depending on repository permissions. Configure them in Repository Settings → Secrets → Actions.
 
+=======
+### Continuous Deployment (CD)
+>>>>>>> b4f56f0239a8e19d03839d1a1db697856994eae9
 
-## 🛠️ Development Commands
+After CI succeeds on `main`, the repository publishes a Docker image to GitHub Container Registry (GHCR).
+
+The publish step is configured to run only for pushes to `main`. To view published images, go to your GitHub profile or repository Packages tab (or visit `https://github.com/<your-github-username>?tab=packages`).
+
+If your organization restricts `GITHUB_TOKEN` package write access, configure a Personal Access Token (PAT) with `write:packages` scope and set it as a repository secret, then update the workflow login step accordingly.
+
+### Required repository secrets for CI
+
+The CI workflow expects the following repository secrets to be configured (Repository Settings → Secrets → Actions):
+
+- `CI_DB_USER` - Username for the test Postgres (used by CI when connecting to the service)
+- `CI_DB_PASS` - Password for the test Postgres
+- `CI_DB_NAME` - Database name used in tests (e.g. `csrdb`)
+- `CI_SECRET_KEY` - Flask SECRET_KEY value for the test run
+- (Optional) `GHCR_PAT` - Personal Access Token with `write:packages` if `GITHUB_TOKEN` lacks package write permissions
+
+If these are not set, the workflow will still run but won't have secure credentials and may fail depending on your repository settings. For local testing you can leave defaults in `.env` for development.
+
+
+## Development Commands
 
 Run database migrations manually:
 
@@ -246,21 +303,21 @@ REACT_APP_API_URL=http://localhost:5000
 
 ---
 
-## 🛠️ Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
-**🐳 Docker Issues:**
+**Docker Issues:**
 - **"Docker not found"**: Install Docker Desktop from https://docker.com
 - **Port conflicts**: Change ports in `docker-compose.yml` if needed
 - **Permission errors**: Run `docker` commands with `sudo` on Linux
 
-**🌐 Connection Issues:**
+**Connection Issues:**
 - **Frontend can't reach backend**: Check if backend is running on port 5000
 - **Database connection failed**: Wait 30 seconds after startup for PostgreSQL
 - **CORS errors**: Backend has CORS enabled for `localhost:3000`
 
-**🔧 Development Issues:**
+**Development Issues:**
 - **Hot reload not working**: Ensure volumes are mounted correctly
 - **Environment variables**: Check `.env` files exist and have correct values
 - **Dependencies**: Run `docker compose build --no-cache` to rebuild
