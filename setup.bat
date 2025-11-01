@@ -29,21 +29,35 @@ if errorlevel 1 (
 
 echo ✅ Docker and Docker Compose are available
 
-REM Create environment files if they don't exist
-if not exist .env (
-    echo 📝 Creating .env file...
-    (
-        echo DB_HOST=db
-        echo DB_PORT=5432
-        echo DB_USER=csruser
-        echo DB_PASS=csrpass
-        echo DB_NAME=csrdb
-        echo SECRET_KEY=supersecretkey-windows
-        echo FLASK_ENV=development
-    ) > .env
-    echo ✅ Backend .env file created
+REM Support --external-db flag: if given, expect user-managed .env and do not create local DB env
+set USE_EXTERNAL_DB=false
+if "%~1"=="--external-db" set USE_EXTERNAL_DB=true
+
+REM Create environment files if they don't exist (skip creating .env in external-db mode)
+if "%USE_EXTERNAL_DB%"=="false" (
+    if not exist .env (
+        echo 📝 Creating .env file...
+        (
+            echo DB_HOST=db
+            echo DB_PORT=5432
+            echo DB_USER=csruser
+            echo DB_PASS=csrpass
+            echo DB_NAME=csrdb
+            echo SECRET_KEY=supersecretkey-windows
+            echo FLASK_ENV=development
+        ) > .env
+        echo ✅ Backend .env file created
+    ) else (
+        echo ✅ Backend .env file already exists
+    )
 ) else (
-    echo ✅ Backend .env file already exists
+    if not exist .env (
+        echo ⚠️  External DB mode: .env not found. Create a private .env with DB_HOST/DB_USER/DB_PASS and SECRET_KEY before running.
+        pause
+        exit /b 1
+    ) else (
+        echo ✅ .env found (external DB mode)
+    )
 )
 
 REM Create frontend environment file
@@ -62,10 +76,18 @@ echo.
 echo 🚀 Starting the application...
 echo This may take a few minutes on first run...
 
+REM Choose compose file
+if "%USE_EXTERNAL_DB%"=="true" (
+    set COMPOSE_FILE=docker-compose.external-db.yml
+    echo ℹ️  Using external DB compose file: %COMPOSE_FILE%
+) else (
+    set COMPOSE_FILE=docker-compose.yml
+)
+
 REM Build and start services
-%COMPOSE_CMD% down -v >nul 2>&1
-%COMPOSE_CMD% build --no-cache
-%COMPOSE_CMD% up -d
+%COMPOSE_CMD% -f %COMPOSE_FILE% down -v >nul 2>&1
+%COMPOSE_CMD% -f %COMPOSE_FILE% build --no-cache
+%COMPOSE_CMD% -f %COMPOSE_FILE% up -d
 
 echo.
 echo ⏳ Waiting for services to be ready...

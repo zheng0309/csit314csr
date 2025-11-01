@@ -98,6 +98,40 @@ The setup script will automatically:
 - ✅ Initialize database with comprehensive seed data
 - ✅ Provide access URLs and credentials
 
+#### External DB mode
+
+If you already have a hosted PostgreSQL instance (for example, a cloud DB), you can run the project with the frontend and backend while using your external database.
+
+Usage (macOS/Linux):
+```bash
+./setup.sh --external-db
+```
+
+Usage (Windows):
+```cmd
+setup.bat --external-db
+```
+
+When using `--external-db` the script will NOT create a local `.env` containing database credentials. You must provide a private `.env` file in the project root containing at least:
+
+```
+DB_HOST=your-db-host
+DB_PORT=5432
+DB_USER=youruser
+DB_PASS=yourpass
+DB_NAME=yourdb
+SECRET_KEY=a-very-secret-key
+```
+
+The repository includes `docker-compose.external-db.yml` which runs only the `web` (Flask) and `frontend` services and reads DB connection information from `.env`.
+
+If you prefer to run the compose command manually:
+
+```bash
+# Use the external-db compose file
+docker compose -f docker-compose.external-db.yml up --build -d
+```
+
 ### **📱 Access Your Application**
 | Service                 | URL                                            | Description         |
 | ----------------------- | ---------------------------------------------- | ------------------- |
