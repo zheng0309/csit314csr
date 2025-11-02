@@ -3,12 +3,12 @@ import {
   Container, Typography, Grid, Card, CardContent, Box, Chip, LinearProgress, Paper,
   IconButton, Button, Fade, Grow, useTheme, useMediaQuery, TextField, InputAdornment,
   Tabs, Tab, Stack, Dialog, DialogTitle, DialogContent, DialogActions, Snackbar, Alert,
-  Divider, MenuItem, Tooltip, Badge
+  Divider, MenuItem, Tooltip, Badge, Rating
 } from '@mui/material';
 import {
   People, Assignment, TrendingUp, Refresh, Timeline, Star, LocalFireDepartment, Logout,
   Search, Info, DoneAll, PlaylistAdd, PlaylistRemove, PhoneInTalk, MailOutline, CheckCircle,
-  RemoveCircleOutline
+  RemoveCircleOutline, Feedback
 } from '@mui/icons-material';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -92,11 +92,26 @@ const CSRDashboard = () => {
         completedRes,
         shortlistRes,
       ] = await Promise.all([
-        axios.get('http://localhost:5000/api/help_requests/open').catch(() => ({ data: [] })),
-        axios.get('http://localhost:5000/users').catch(() => ({ data: [] })),
-        (csrId ? axios.get(`http://localhost:5000/api/csr/accepted/${csrId}`) : Promise.resolve({ data: [] })).catch(() => ({ data: [] })),
-        (csrId ? axios.get(`http://localhost:5000/api/csr/completed/${csrId}`) : Promise.resolve({ data: [] })).catch(() => ({ data: [] })),
-        (csrId ? axios.get(`http://localhost:5000/api/csr/shortlist/${csrId}`) : Promise.resolve({ data: [] })).catch(() => ({ data: [] })),
+        axios.get('http://localhost:5000/api/help_requests/open').catch((e) => {
+          console.error('Error fetching open requests:', e.response?.data || e.message);
+          return { data: [] };
+        }),
+        axios.get('http://localhost:5000/users').catch((e) => {
+          console.error('Error fetching users:', e.response?.data || e.message);
+          return { data: [] };
+        }),
+        (csrId ? axios.get(`http://localhost:5000/api/csr/accepted/${csrId}`) : Promise.resolve({ data: [] })).catch((e) => {
+          console.error('Error fetching accepted requests:', e.response?.data || e.message);
+          return { data: [] };
+        }),
+        (csrId ? axios.get(`http://localhost:5000/api/csr/completed/${csrId}`) : Promise.resolve({ data: [] })).catch((e) => {
+          console.error('Error fetching completed requests:', e.response?.data || e.message);
+          return { data: [] };
+        }),
+        (csrId ? axios.get(`http://localhost:5000/api/csr/shortlist/${csrId}`) : Promise.resolve({ data: [] })).catch((e) => {
+          console.error('Error fetching shortlist:', e.response?.data || e.message);
+          return { data: [] };
+        }),
       ]);
 
       const requestsData = toArray(reqRes?.data);
@@ -107,6 +122,9 @@ const CSRDashboard = () => {
         status: r.status,
         urgency: r.urgency,
         location: r.location,
+        category: r.category,
+        preferredTime: r.preferredTime ?? r.preferred_time,
+        specialRequirements: r.specialRequirements ?? r.special_requirements,
         matchedAt: r.matched_at ?? r.matchedAt,
       }));
       let completedData = toArray(completedRes?.data).map(r => ({
@@ -116,7 +134,14 @@ const CSRDashboard = () => {
         status: r.status,
         urgency: r.urgency,
         location: r.location,
+        category: r.category,
+        preferredTime: r.preferredTime ?? r.preferred_time,
+        specialRequirements: r.specialRequirements ?? r.special_requirements,
         completedAt: r.completed_at ?? r.completedAt,
+        feedbackRating: r.feedback_rating ?? r.feedbackRating,
+        feedbackComment: r.feedback_comment ?? r.feedbackComment,
+        feedbackAnonymous: r.feedback_anonymous ?? r.feedbackAnonymous,
+        feedbackSubmittedAt: r.feedback_submitted_at ?? r.feedbackSubmittedAt,
       }));
       let shortlistData = toArray(shortlistRes?.data).map(r => ({
         id: r.id ?? r.request_id,
@@ -126,6 +151,8 @@ const CSRDashboard = () => {
         urgency: r.urgency,
         location: r.location,
         category: r.category,
+        preferredTime: r.preferredTime ?? r.preferred_time,
+        specialRequirements: r.specialRequirements ?? r.special_requirements,
       }));
 
       // Fallback to global lists if CSR-specific lists are empty
@@ -138,6 +165,9 @@ const CSRDashboard = () => {
           status: r.status,
           urgency: r.urgency,
           location: r.location,
+          category: r.category,
+          preferredTime: r.preferredTime ?? r.preferred_time,
+          specialRequirements: r.specialRequirements ?? r.special_requirements,
           matchedAt: r.matched_at ?? r.matchedAt,
         }));
       }
@@ -150,7 +180,14 @@ const CSRDashboard = () => {
           status: r.status,
           urgency: r.urgency,
           location: r.location,
+          category: r.category,
+          preferredTime: r.preferredTime ?? r.preferred_time,
+          specialRequirements: r.specialRequirements ?? r.special_requirements,
           completedAt: r.completed_at ?? r.completedAt,
+          feedbackRating: r.feedback_rating ?? r.feedbackRating,
+          feedbackComment: r.feedback_comment ?? r.feedbackComment,
+          feedbackAnonymous: r.feedback_anonymous ?? r.feedbackAnonymous,
+          feedbackSubmittedAt: r.feedback_submitted_at ?? r.feedbackSubmittedAt,
         }));
       }
       if (!shortlistData.length) {
@@ -163,8 +200,25 @@ const CSRDashboard = () => {
           urgency: r.urgency,
           location: r.location,
           category: r.category,
+          preferredTime: r.preferredTime ?? r.preferred_time,
+          specialRequirements: r.specialRequirements ?? r.special_requirements,
         }));
       }
+
+      console.log('CSR Dashboard Raw Responses:', {
+        reqRes: Array.isArray(reqRes?.data) ? `${reqRes.data.length} items` : reqRes?.data,
+        acceptedRes: Array.isArray(acceptedRes?.data) ? `${acceptedRes.data.length} items` : acceptedRes?.data,
+        completedRes: Array.isArray(completedRes?.data) ? `${completedRes.data.length} items` : completedRes?.data,
+        shortlistRes: Array.isArray(shortlistRes?.data) ? `${shortlistRes.data.length} items` : shortlistRes?.data,
+        usersRes: usersRes?.data
+      });
+      console.log('CSR Dashboard Processed Data:', {
+        requests: requestsData.length,
+        accepted: acceptedData.length,
+        completed: completedData.length,
+        shortlist: shortlistData.length,
+        users: Array.isArray(usersRes?.data) ? usersRes.data.length : (usersRes?.data?.count ?? 0)
+      });
 
       setRequests(requestsData);
       setAccepted(acceptedData);
@@ -172,8 +226,9 @@ const CSRDashboard = () => {
       setShortlist(shortlistData);
       setUsersCount(Array.isArray(usersRes?.data) ? usersRes.data.length : (usersRes?.data?.count ?? 0));
     } catch (e) {
-      console.error(e);
-      setToast({ open: true, msg: 'Failed to fetch data', severity: 'error' });
+      console.error('CSR Dashboard fetch error:', e);
+      console.error('Error details:', e.response?.data || e.message);
+      setToast({ open: true, msg: `Failed to fetch data: ${e.response?.data?.error || e.message}`, severity: 'error' });
     } finally {
       setLoading(false);
     }
@@ -215,7 +270,11 @@ const CSRDashboard = () => {
     return requests
       .filter(r => (r.status ?? 'open') === 'open')
       .filter(r => (category === 'all' ? true : r.category === category))
-      .filter(r => (urgentOnly ? !!r.urgent : true))
+      .filter(r => {
+        if (!urgentOnly) return true;
+        // Check if urgency is 'high' or if there's an urgent flag
+        return r.urgency === 'high' || r.urgent === true || r.urgency === 'urgent';
+      })
       .filter(r => {
         const q = search.trim().toLowerCase();
         if (!q) return true;
@@ -361,9 +420,27 @@ const CSRDashboard = () => {
           <Typography variant="body2" sx={{ opacity: 0.85, mt: 0.5 }}>{r.description}</Typography>
           <Stack direction="row" gap={1} sx={{ mt: 1.2, flexWrap: 'wrap' }}>
             {r.category && <Chip label={r.category} size="small" variant="outlined" />}
+            {r.urgency && (
+              <Chip 
+                label={`Urgency: ${r.urgency === 'high' ? 'High' : r.urgency === 'medium' ? 'Medium' : r.urgency === 'low' ? 'Low' : r.urgency}`} 
+                size="small" 
+                color={r.urgency === 'high' ? 'error' : r.urgency === 'medium' ? 'warning' : 'default'}
+                variant="outlined"
+              />
+            )}
             {r.location && <Chip label={r.location} size="small" variant="outlined" />}
             {r.status && <Chip label={r.status} size="small" />}
           </Stack>
+          {(r.preferredTime || r.preferred_time) && (
+            <Typography variant="caption" sx={{ mt: 0.5, opacity: 0.8 }}>
+              Preferred Time: {(r.preferredTime || r.preferred_time) || 'Not specified'}
+            </Typography>
+          )}
+          {(r.specialRequirements || r.special_requirements) && (
+            <Typography variant="caption" sx={{ mt: 0.5, opacity: 0.8, fontStyle: 'italic' }}>
+              Special Requirements: {(r.specialRequirements || r.special_requirements)}
+            </Typography>
+          )}
         </Box>
         <Stack direction="row" gap={1} sx={{ flexShrink: 0 }}>
           {actions}
@@ -581,24 +658,84 @@ const CSRDashboard = () => {
                     })
                     .map(r => (
                       <Grid item xs={12} md={6} key={r.id}>
-                        <RequestCard
-                          r={r}
-                          actions={
-                            <>
-                            <Chip variant="outlined" color="success" label={`Completed • ${new Date(r.completedAt).toLocaleDateString()}`} />
-                            <Button
-                              component={RouterLink}
-                              to={`/requests/${r.id}`}
-                              size="small"
-                              variant="outlined"
-                              startIcon={<Info />}
-                              sx={{ ml: 1 }}
-                            >
-                              Details
-                            </Button>
-                            </>
-                          }
-                        />
+                        <Paper elevation={0} sx={{ p: 2, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.04)' }}>
+                          <Stack direction="row" alignItems="flex-start" justifyContent="space-between" gap={2}>
+                            <Box sx={{ flex: 1 }}>
+                              <Stack direction="row" alignItems="center" gap={1}>
+                                <Typography variant="h6" sx={{ fontWeight: 700 }}>{r.title}</Typography>
+                                {r.urgent && (
+                                  <Chip
+                                    icon={<LocalFireDepartment sx={{ color: '#fff !important' }} />}
+                                    label="Urgent"
+                                    size="small"
+                                    color="error"
+                                    sx={{ color: 'white', fontWeight: 700 }}
+                                  />
+                                )}
+                              </Stack>
+                              <Typography variant="body2" sx={{ opacity: 0.85, mt: 0.5 }}>{r.description}</Typography>
+                              <Stack direction="row" gap={1} sx={{ mt: 1.2, flexWrap: 'wrap' }}>
+                                {r.category && <Chip label={r.category} size="small" variant="outlined" />}
+                                {r.location && <Chip label={r.location} size="small" variant="outlined" />}
+                                {r.status && <Chip label={r.status} size="small" />}
+                              </Stack>
+                              
+                              {/* Feedback Section */}
+                              {r.feedbackRating || r.feedbackComment ? (
+                                <Box sx={{ mt: 2, p: 2, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                  <Stack direction="row" alignItems="center" gap={1} sx={{ mb: 1 }}>
+                                    <Feedback sx={{ fontSize: 20, opacity: 0.8 }} />
+                                    <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                                      PIN Feedback
+                                    </Typography>
+                                  </Stack>
+                                  {r.feedbackRating && (
+                                    <Box sx={{ mb: 1 }}>
+                                      <Typography variant="caption" sx={{ opacity: 0.8, mr: 1 }}>Rating:</Typography>
+                                      <Rating value={r.feedbackRating} readOnly size="small" />
+                                    </Box>
+                                  )}
+                                  {r.feedbackComment && (
+                                    <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic', opacity: 0.9 }}>
+                                      "{r.feedbackComment}"
+                                    </Typography>
+                                  )}
+                                  {r.feedbackAnonymous && (
+                                    <Chip 
+                                      label="Anonymous" 
+                                      size="small" 
+                                      sx={{ mt: 1, opacity: 0.7 }} 
+                                      variant="outlined"
+                                    />
+                                  )}
+                                  {r.feedbackSubmittedAt && (
+                                    <Typography variant="caption" sx={{ mt: 1, display: 'block', opacity: 0.7 }}>
+                                      Submitted: {new Date(r.feedbackSubmittedAt).toLocaleDateString()}
+                                    </Typography>
+                                  )}
+                                </Box>
+                              ) : (
+                                <Box sx={{ mt: 2, p: 1.5, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.1)' }}>
+                                  <Typography variant="caption" sx={{ opacity: 0.6, fontStyle: 'italic' }}>
+                                    No feedback received yet
+                                  </Typography>
+                                </Box>
+                              )}
+                            </Box>
+                            <Stack direction="row" gap={1} sx={{ flexShrink: 0 }}>
+                              <Chip variant="outlined" color="success" label={`Completed • ${new Date(r.completedAt).toLocaleDateString()}`} />
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={<Info />}
+                                onClick={() => openDetails(r)}
+                                sx={{ ml: 1 }}
+                              >
+                                Details
+                              </Button>
+                            </Stack>
+                          </Stack>
+                        </Paper>
                       </Grid>
                     ))
                   }
@@ -639,23 +776,109 @@ const CSRDashboard = () => {
       </Box>
 
       {/* Details dialog */}
-      <Dialog open={detailOpen} onClose={() => setDetailOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={detailOpen} onClose={() => setDetailOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle sx={{ fontWeight: 800 }}>
-          {detailReq?.title} {detailReq?.urgent && <Chip color="error" size="small" label="Urgent" sx={{ ml: 1, color: '#fff' }} />}
+          {detailReq?.title}
+          {(detailReq?.urgency === 'high' || detailReq?.urgent) && (
+            <Chip color="error" size="small" label="Urgent" sx={{ ml: 1, color: '#fff' }} />
+          )}
         </DialogTitle>
         <DialogContent dividers>
-          <Stack gap={1.2}>
-            <Typography variant="body1">{detailReq?.description}</Typography>
-            <Stack direction="row" gap={1} flexWrap="wrap">
-              {detailReq?.category && <Chip label={`Category: ${detailReq.category}`} />}
-              {detailReq?.location && <Chip label={`Location: ${detailReq.location}`} />}
-              {detailReq?.status && <Chip label={`Status: ${detailReq.status}`} />}
+          <Stack gap={2}>
+            <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>{detailReq?.description}</Typography>
+            
+            <Divider />
+            
+            <Stack spacing={1.5}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, opacity: 0.9 }}>Request Information</Typography>
+              <Stack direction="row" gap={1} flexWrap="wrap">
+                {detailReq?.category && <Chip label={`Category: ${detailReq.category}`} variant="outlined" />}
+                {detailReq?.urgency && (
+                  <Chip 
+                    label={`Urgency: ${detailReq.urgency === 'high' ? 'High' : detailReq.urgency === 'medium' ? 'Medium' : detailReq.urgency === 'low' ? 'Low' : detailReq.urgency}`}
+                    color={detailReq.urgency === 'high' ? 'error' : detailReq.urgency === 'medium' ? 'warning' : 'default'}
+                    variant="outlined"
+                  />
+                )}
+                {detailReq?.location && <Chip label={`Location: ${detailReq.location}`} variant="outlined" />}
+                {detailReq?.status && <Chip label={`Status: ${detailReq.status}`} color={detailReq.status === 'completed' ? 'success' : detailReq.status === 'open' ? 'primary' : 'default'} />}
+              </Stack>
+              
+              {(detailReq?.preferredTime || detailReq?.preferred_time) && (
+                <Box>
+                  <Typography variant="caption" sx={{ opacity: 0.7, display: 'block', mb: 0.5 }}>Preferred Time:</Typography>
+                  <Typography variant="body2">{(detailReq?.preferredTime || detailReq?.preferred_time) || 'Not specified'}</Typography>
+                </Box>
+              )}
+              
+              {(detailReq?.specialRequirements || detailReq?.special_requirements) && (
+                <Box>
+                  <Typography variant="caption" sx={{ opacity: 0.7, display: 'block', mb: 0.5 }}>Special Requirements:</Typography>
+                  <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
+                    {(detailReq?.specialRequirements || detailReq?.special_requirements)}
+                  </Typography>
+                </Box>
+              )}
             </Stack>
+
+            {/* Show feedback section for completed requests */}
+            {detailReq?.status === 'completed' && (
+              <>
+                <Divider />
+                <Stack spacing={1.5}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, opacity: 0.9 }}>PIN Feedback</Typography>
+                  {detailReq?.feedbackRating || detailReq?.feedbackComment ? (
+                    <Box sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                      {detailReq?.feedbackRating && (
+                        <Stack direction="row" alignItems="center" gap={1} sx={{ mb: 1 }}>
+                          <Typography variant="caption" sx={{ opacity: 0.7 }}>Rating:</Typography>
+                          <Rating value={detailReq.feedbackRating} readOnly size="small" />
+                          <Typography variant="caption" sx={{ opacity: 0.8 }}>({detailReq.feedbackRating}/5)</Typography>
+                        </Stack>
+                      )}
+                      {detailReq?.feedbackComment && (
+                        <Box sx={{ mt: 1 }}>
+                          <Typography variant="caption" sx={{ opacity: 0.7, display: 'block', mb: 0.5 }}>Comment:</Typography>
+                          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{detailReq.feedbackComment}</Typography>
+                        </Box>
+                      )}
+                      {detailReq?.feedbackAnonymous && (
+                        <Typography variant="caption" sx={{ mt: 1, display: 'block', opacity: 0.6, fontStyle: 'italic' }}>
+                          (Submitted anonymously)
+                        </Typography>
+                      )}
+                      {detailReq?.feedbackSubmittedAt && (
+                        <Typography variant="caption" sx={{ mt: 1, display: 'block', opacity: 0.6 }}>
+                          Submitted: {new Date(detailReq.feedbackSubmittedAt).toLocaleString()}
+                        </Typography>
+                      )}
+                    </Box>
+                  ) : (
+                    <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.1)' }}>
+                      <Typography variant="caption" sx={{ opacity: 0.6, fontStyle: 'italic' }}>
+                        No feedback received yet
+                      </Typography>
+                    </Box>
+                  )}
+                </Stack>
+              </>
+            )}
+            
+            {detailReq?.completedAt && (
+              <>
+                <Divider />
+                <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                  Completed: {new Date(detailReq.completedAt).toLocaleString()}
+                </Typography>
+              </>
+            )}
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDetailOpen(false)}>Close</Button>
-          <Button variant="contained" onClick={() => { setDetailOpen(false); acceptRequest(detailReq.id); }}>Accept</Button>
+          {detailReq?.status !== 'completed' && (
+            <Button variant="contained" onClick={() => { setDetailOpen(false); acceptRequest(detailReq.id); }}>Accept</Button>
+          )}
         </DialogActions>
       </Dialog>
 

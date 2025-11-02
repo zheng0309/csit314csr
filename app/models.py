@@ -56,12 +56,15 @@ class PinRequest(db.Model):
     status = db.Column(db.String(20), default='open')  # open, matched, closed
     urgency = db.Column(db.String(20), default='medium')  # low, medium, high
     completion_note = db.Column(db.Text)
+    # Note: preferred_time and special_requirements columns are added via ALTER TABLE in app/__init__.py
+    # We don't define them as db.Column here to avoid SQLAlchemy querying them before they exist
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime)
 
     # Relationships
     shortlists = db.relationship('CSRShortlist', backref='request', lazy=True)
     matches = db.relationship('MatchHistory', backref='request', lazy=True)
+    feedback = db.relationship('Feedback', backref='request', uselist=False, lazy=True)
 
     def __repr__(self):
         return f"<Request {self.title} ({self.status})>"
@@ -112,3 +115,20 @@ class Report(db.Model):
 
     def __repr__(self):
         return f"<Report {self.report_type} by Manager:{self.manager_id}>"
+
+
+# -------------------------------------------------------------------
+# FEEDBACK TABLE
+# -------------------------------------------------------------------
+class Feedback(db.Model):
+    __tablename__ = 'feedback'
+
+    feedback_id = db.Column(db.Integer, primary_key=True)
+    request_id = db.Column(db.Integer, db.ForeignKey('pin_requests.pin_requests_id'), nullable=False, unique=True)
+    rating = db.Column(db.Integer, nullable=False)
+    comment = db.Column(db.Text)
+    anonymous = db.Column(db.Boolean, default=False)
+    submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<Feedback for Request:{self.request_id} Rating:{self.rating}>"

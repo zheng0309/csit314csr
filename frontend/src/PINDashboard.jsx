@@ -105,7 +105,8 @@ const PINDashboard = () => {
         contactInfo: r.contact_info || r.contactInfo || null,
         createdAt: r.created_at || r.createdAt,
         updatedAt: r.updated_at || r.updatedAt || r.created_at || r.createdAt,
-        completedAt: r.completed_at || r.completedAt
+        completedAt: r.completed_at || r.completedAt,
+        feedbackSubmitted: !!(r.feedback_rating || r.feedback_comment || r.feedback_submitted_at)
       }));
       
       // Filter requests by status
@@ -351,13 +352,20 @@ const PINDashboard = () => {
 
   const submitFeedback = async ()=>{
     try{
-      await axios.post(`http://localhost:5000/api/help-requests/${selectedRequest.id}/feedback`, feedbackForm);
+      // Validate rating
+      if (!feedbackForm.rating || feedbackForm.rating < 1 || feedbackForm.rating > 5) {
+        setToast({ open:true, msg:'Please select a rating from 1 to 5 stars', severity:'warning' });
+        return;
+      }
+      
+      const response = await axios.post(`http://localhost:5000/api/help-requests/${selectedRequest.id}/feedback`, feedbackForm);
       setToast({ open:true, msg:'Thank you for your feedback!', severity:'success' });
       setFeedbackDialogOpen(false);
       await fetchPINData();
     }catch(e){
-      console.error(e);
-      setToast({ open:true, msg:'Failed to submit feedback', severity:'error' });
+      console.error('Submit feedback error:', e);
+      const errorMsg = e.response?.data?.error || e.message || 'Failed to submit feedback';
+      setToast({ open:true, msg: `Failed to submit feedback: ${errorMsg}`, severity:'error' });
     }
   };
 
@@ -728,11 +736,23 @@ const PINDashboard = () => {
             <Typography variant="h6">{selectedRequest?.title}</Typography>
             <Box>
               <Typography gutterBottom>How would you rate the help you received?</Typography>
-              <Rating 
-                value={feedbackForm.rating} 
-                onChange={(_, value)=>setFeedbackForm(f=>({ ...f, rating:value }))} 
-                size="large" 
-              />
+              <Stack direction="row" alignItems="center" spacing={2}>
+                <Rating 
+                  value={feedbackForm.rating} 
+                  onChange={(_, value)=>setFeedbackForm(f=>({ ...f, rating:value || 0 }))} 
+                  size="large"
+                  max={5}
+                  precision={1}
+                />
+                {feedbackForm.rating > 0 && (
+                  <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                    {feedbackForm.rating} {feedbackForm.rating === 1 ? 'star' : 'stars'}
+                  </Typography>
+                )}
+              </Stack>
+              <Typography variant="caption" sx={{ mt: 0.5, opacity: 0.7 }}>
+                Select from 1 to 5 stars
+              </Typography>
             </Box>
             <TextField 
               label="Comments (Optional)" 
@@ -787,7 +807,15 @@ function RequestCard({ request, onEdit, onDuplicate, onComplete, onUrgent, onCan
 
         {/* Status and Stats */}
         <Stack direction="row" spacing={1} sx={{ flexWrap:'wrap' }}>
-          <Chip label={request.category} size="small" variant="outlined"/>
+          {request.category && <Chip label={request.category} size="small" variant="outlined"/>}
+          {request.urgency && (
+            <Chip 
+              label={`Urgency: ${request.urgency === 'high' ? 'High' : request.urgency === 'medium' ? 'Medium' : request.urgency === 'low' ? 'Low' : request.urgency}`}
+              size="small" 
+              color={request.urgency === 'high' ? 'error' : request.urgency === 'medium' ? 'warning' : 'default'}
+              variant="outlined"
+            />
+          )}
           <Chip label={request.status} size="small" color="primary"/>
           <Chip 
             label={`${request.viewCount || 0} views`} 
@@ -810,14 +838,36 @@ function RequestCard({ request, onEdit, onDuplicate, onComplete, onUrgent, onCan
 
         {/* Details */}
         <Stack spacing={0.5}>
+          {request.category && (
+            <Stack direction="row" spacing={1}>
+              <Typography variant="body2" sx={{ opacity:0.7 }}>Category:</Typography>
+              <Typography variant="body2">{request.category}</Typography>
+            </Stack>
+          )}
           <Stack direction="row" spacing={1}>
-            <Typography variant="body2" sx={{ opacity:0.7 }}>Location:</Typography>
-            <Typography variant="body2">{request.location}</Typography>
+            <Typography variant="body2" sx={{ opacity:0.7 }}>Urgency:</Typography>
+            <Typography variant="body2" sx={{ fontWeight: request.urgency === 'high' || request.urgency === 'urgent' ? 600 : 400 }}>
+              {request.urgency === 'high' ? 'High' : request.urgency === 'medium' ? 'Medium' : request.urgency === 'low' ? 'Low' : request.urgency}
+            </Typography>
           </Stack>
-          <Stack direction="row" spacing={1}>
-            <Typography variant="body2" sx={{ opacity:0.7 }}>Preferred Time:</Typography>
-            <Typography variant="body2">{request.preferredTime}</Typography>
-          </Stack>
+          {request.location && (
+            <Stack direction="row" spacing={1}>
+              <Typography variant="body2" sx={{ opacity:0.7 }}>Location:</Typography>
+              <Typography variant="body2">{request.location}</Typography>
+            </Stack>
+          )}
+          {request.preferredTime && (
+            <Stack direction="row" spacing={1}>
+              <Typography variant="body2" sx={{ opacity:0.7 }}>Preferred Time:</Typography>
+              <Typography variant="body2">{request.preferredTime}</Typography>
+            </Stack>
+          )}
+          {request.specialRequirements && (
+            <Stack direction="row" spacing={1}>
+              <Typography variant="body2" sx={{ opacity:0.7 }}>Special Requirements:</Typography>
+              <Typography variant="body2">{request.specialRequirements}</Typography>
+            </Stack>
+          )}
           {request.assignedTo && (
             <Stack direction="row" spacing={1}>
               <Typography variant="body2" sx={{ opacity:0.7 }}>Assigned CSR:</Typography>
@@ -896,7 +946,15 @@ function CompletedRequestCard({ request, onFeedback, onPrint, onDuplicate }){
         </Stack>
 
         <Stack direction="row" spacing={1} sx={{ flexWrap:'wrap' }}>
-          <Chip label={request.category} size="small" variant="outlined"/>
+          {request.category && <Chip label={request.category} size="small" variant="outlined"/>}
+          {request.urgency && (
+            <Chip 
+              label={`Urgency: ${request.urgency === 'high' ? 'High' : request.urgency === 'medium' ? 'Medium' : request.urgency === 'low' ? 'Low' : request.urgency}`}
+              size="small" 
+              color={request.urgency === 'high' ? 'error' : request.urgency === 'medium' ? 'warning' : 'default'}
+              variant="outlined"
+            />
+          )}
           <Chip 
             label={new Date(request.completedAt).toLocaleDateString()} 
             size="small" 
@@ -907,6 +965,19 @@ function CompletedRequestCard({ request, onFeedback, onPrint, onDuplicate }){
         <Typography variant="body2" sx={{ opacity:0.9 }}>
           {request.description.length > 100 ? `${request.description.substring(0, 100)}...` : request.description}
         </Typography>
+
+        {(request.preferredTime || request.preferred_time) && (
+          <Stack direction="row" spacing={1}>
+            <Typography variant="body2" sx={{ opacity:0.7 }}>Preferred Time:</Typography>
+            <Typography variant="body2">{request.preferredTime || request.preferred_time}</Typography>
+          </Stack>
+        )}
+        {(request.specialRequirements || request.special_requirements) && (
+          <Stack direction="row" spacing={1}>
+            <Typography variant="body2" sx={{ opacity:0.7 }}>Special Requirements:</Typography>
+            <Typography variant="body2" sx={{ fontStyle: 'italic' }}>{request.specialRequirements || request.special_requirements}</Typography>
+          </Stack>
+        )}
 
         {request.assignedTo && (
           <Stack direction="row" spacing={1}>

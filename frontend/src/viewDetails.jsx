@@ -30,7 +30,12 @@ export default function ViewDetails() {
             status: d.status,
             completedAt: d.completed_at || d.completedAt,
             note: d.completion_note || d.note,
-            feedback: Array.isArray(d.feedback) ? d.feedback : [],
+            feedback: d.feedback_rating || d.feedback_comment ? {
+              rating: d.feedback_rating,
+              comment: d.feedback_comment,
+              anonymous: d.feedback_anonymous,
+              submitted_at: d.feedback_submitted_at
+            } : null,
           });
         } else {
           setData(null);
@@ -99,26 +104,47 @@ export default function ViewDetails() {
         <Divider sx={{ my: 2 }} />
 
         <Box>
-          <Typography variant="h6" sx={{ fontWeight: 800, mb: 1 }}>Feedback</Typography>
-          {Array.isArray(data.feedback) && data.feedback.length > 0 ? (
-            <Stack spacing={1.5}>
-              {data.feedback.map((f, idx) => (
-                <Paper key={idx} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
-                  <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}>
-                    <Rating value={Number(f.rating) || 0} readOnly size="small" />
-                    <Typography variant="body2" sx={{ color: '#333' }}>
-                      {f.by ? `• ${f.by}` : ''}
-                      {f.createdAt ? ` • ${new Date(f.createdAt).toLocaleDateString()}` : ''}
+          <Typography variant="h6" sx={{ fontWeight: 800, mb: 1 }}>PIN Feedback</Typography>
+          {data.feedback ? (
+            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(0,0,0,0.02)' }}>
+              <Stack spacing={1.5}>
+                {data.feedback.rating && (
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>Rating</Typography>
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <Rating value={Number(data.feedback.rating) || 0} readOnly size="medium" max={5} />
+                      <Typography variant="body2" sx={{ color: '#666' }}>
+                        {data.feedback.rating} {data.feedback.rating === 1 ? 'star' : 'stars'}
+                      </Typography>
+                    </Stack>
+                  </Box>
+                )}
+                {data.feedback.comment && (
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>Comment</Typography>
+                    <Typography variant="body1" sx={{ color: '#333', fontStyle: 'italic' }}>
+                      "{data.feedback.comment}"
                     </Typography>
-                  </Stack>
-                  <Typography variant="body1" sx={{ color: '#222' }}>
-                    {f.comment || '—'}
-                  </Typography>
-                </Paper>
-              ))}
-            </Stack>
+                  </Box>
+                )}
+                <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                  {data.feedback.anonymous && (
+                    <Chip label="Anonymous" size="small" variant="outlined" />
+                  )}
+                  {data.feedback.submitted_at && (
+                    <Typography variant="caption" sx={{ color: '#666', alignSelf: 'center' }}>
+                      Submitted: {new Date(data.feedback.submitted_at).toLocaleDateString()}
+                    </Typography>
+                  )}
+                </Stack>
+              </Stack>
+            </Paper>
           ) : (
-            <Typography variant="body2" sx={{ color: '#333' }}>No feedback yet.</Typography>
+            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(0,0,0,0.02)' }}>
+              <Typography variant="body2" sx={{ color: '#666', fontStyle: 'italic' }}>
+                No feedback received yet from the PIN.
+              </Typography>
+            </Paper>
           )}
         </Box>
       </Paper>

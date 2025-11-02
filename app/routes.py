@@ -1,7 +1,10 @@
 from flask import Blueprint, jsonify, request, session
 from app.database import db
-from app.models import User, PinRequest, MatchHistory, CSRShortlist
+from app.models import User, PinRequest, MatchHistory, CSRShortlist, Feedback
 from flask_cors import cross_origin
+from datetime import datetime
+from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy import inspect, text
 
 main = Blueprint('main', __name__)
 
@@ -97,26 +100,74 @@ def get_requests():
 @main.route('/api/requests/<int:req_id>', methods=['GET'])
 @cross_origin()
 def get_request_by_id(req_id):
-    req = PinRequest.query.get(req_id)
-    if not req:
-        return jsonify({"error": "Request not found"}), 404
+    try:
+        req = PinRequest.query.get(req_id)
+        if not req:
+            return jsonify({"error": "Request not found"}), 404
 
-    data = {
-        "id": req.pin_requests_id,
-        "title": req.title,
-        "description": req.description,
-        "category": req.category.name if req.category else None,
-        "location": req.location,
-        "urgency": req.urgency,
-        "status": req.status,
-        "requester_name": req.pin_user.name if req.pin_user else None,
-        "user_id": req.user_id,
-        "created_at": req.created_at.isoformat() if req.created_at else None,
-        "completed_at": req.completed_at.isoformat() if req.completed_at else None,
-        "completion_note": req.completion_note,
-    }
+        # Safely get feedback
+        feedback_data = None
+        try:
+            inspector = inspect(db.engine)
+            if 'feedback' in inspector.get_table_names():
+                feedback = Feedback.query.filter_by(request_id=req_id).first()
+                if feedback:
+                    feedback_data = {
+                        "rating": feedback.rating,
+                        "comment": feedback.comment,
+                        "anonymous": feedback.anonymous,
+                        "submitted_at": feedback.submitted_at.isoformat() if feedback.submitted_at else None
+                    }
+        except Exception:
+            db.session.rollback()
 
-    return jsonify(data), 200
+        # Safely get preferred_time and special_requirements using raw SQL
+        preferred_time = None
+        special_requirements = None
+        try:
+            result = db.session.execute(
+                text("SELECT preferred_time, special_requirements FROM pin_requests WHERE pin_requests_id = :id"),
+                {"id": req.pin_requests_id}
+            ).first()
+            if result:
+                preferred_time = result[0] if result[0] else None
+                special_requirements = result[1] if result[1] else None
+        except (OperationalError, ProgrammingError):
+            # Columns don't exist yet - this is OK
+            pass
+        except Exception:
+            pass
+        
+        data = {
+            "id": req.pin_requests_id,
+            "title": req.title,
+            "description": req.description,
+            "category": req.category.name if req.category else None,
+            "location": req.location,
+            "urgency": req.urgency,
+            "status": req.status,
+            "requester_name": req.pin_user.name if req.pin_user else None,
+            "user_id": req.user_id,
+            "created_at": req.created_at.isoformat() if req.created_at else None,
+            "completed_at": req.completed_at.isoformat() if req.completed_at else None,
+            "completion_note": req.completion_note,
+            "preferred_time": preferred_time,
+            "preferredTime": preferred_time,
+            "special_requirements": special_requirements,
+            "specialRequirements": special_requirements,
+            "feedback_rating": feedback_data["rating"] if feedback_data else None,
+            "feedback_comment": feedback_data["comment"] if feedback_data else None,
+            "feedback_anonymous": feedback_data["anonymous"] if feedback_data else None,
+            "feedback_submitted_at": feedback_data["submitted_at"] if feedback_data else None,
+        }
+
+        return jsonify(data), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error in get_request_by_id: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to fetch request: {str(e)}"}), 500
 
 # ---------------------------------
 # 👥 Get All Users
@@ -160,6 +211,40 @@ def create_help_request():
 
     db.session.add(new_request)
     db.session.commit()
+    
+    # Update preferred_time and special_requirements using raw SQL (will fail gracefully if columns don't exist)
+    pref_time = data.get('preferred_time') or data.get('preferredTime')
+    spec_req = data.get('special_requirements') or data.get('specialRequirements')
+    
+    if pref_time:
+        try:
+            db.session.execute(
+                text("UPDATE pin_requests SET preferred_time = :val WHERE pin_requests_id = :id"),
+                {"val": pref_time, "id": new_request.pin_requests_id}
+            )
+            db.session.commit()
+        except (OperationalError, ProgrammingError):
+            db.session.rollback()
+            # Columns don't exist yet, skip
+            pass
+        except Exception as e:
+            db.session.rollback()
+            print(f"Note: Could not set preferred_time: {str(e)}")
+    
+    if spec_req:
+        try:
+            db.session.execute(
+                text("UPDATE pin_requests SET special_requirements = :val WHERE pin_requests_id = :id"),
+                {"val": spec_req, "id": new_request.pin_requests_id}
+            )
+            db.session.commit()
+        except (OperationalError, ProgrammingError):
+            db.session.rollback()
+            # Columns don't exist yet, skip
+            pass
+        except Exception as e:
+            db.session.rollback()
+            print(f"Note: Could not set special_requirements: {str(e)}")
 
     return jsonify({
         "message": "Help request created successfully",
@@ -255,34 +340,85 @@ def delete_help_request(request_id):
 @main.route('/api/help-requests/<int:request_id>/feedback', methods=['POST'])
 @cross_origin()
 def submit_feedback(request_id):
-    data = request.get_json()
-    
-    if not data:
-        return jsonify({"error": "No feedback data provided"}), 400
-    
-    req = PinRequest.query.filter_by(pin_requests_id=request_id).first()
-    if not req:
-        return jsonify({"error": "Request not found"}), 404
-    
-    # Store feedback data (you may want to create a Feedback model for this)
-    # For now, we'll store it in completion_note or you can add a feedback field
-    rating = data.get('rating', 0)
-    comment = data.get('comment', '')
-    anonymous = data.get('anonymous', False)
-    
-    # TODO: Create a Feedback model if you want to store feedback separately
-    # For now, just return success
-    # You could store this in a new table or add fields to PinRequest model
-    
-    return jsonify({
-        "message": "Feedback submitted successfully",
-        "feedback": {
-            "request_id": request_id,
-            "rating": rating,
-            "comment": comment,
-            "anonymous": anonymous
-        }
-    }), 201
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({"error": "No feedback data provided"}), 400
+        
+        req = PinRequest.query.filter_by(pin_requests_id=request_id).first()
+        if not req:
+            return jsonify({"error": "Request not found"}), 404
+        
+        # Validate rating
+        rating = data.get('rating', 0)
+        if not rating or rating < 1 or rating > 5:
+            return jsonify({"error": "Rating must be between 1 and 5"}), 400
+        
+        comment = data.get('comment', '')
+        anonymous = data.get('anonymous', False)
+        
+        # Ensure feedback table exists
+        try:
+            inspector = inspect(db.engine)
+            if 'feedback' not in inspector.get_table_names():
+                from app.models import Feedback
+                Feedback.__table__.create(db.engine, checkfirst=True)
+                db.session.commit()
+        except Exception as e:
+            # If table creation fails, try to continue anyway
+            print(f"Warning: Could not verify/create feedback table: {str(e)}")
+            db.session.rollback()
+        
+        # Check if feedback already exists for this request
+        try:
+            existing_feedback = Feedback.query.filter_by(request_id=request_id).first()
+        except Exception as e:
+            # If query fails, table might not exist - create it and try again
+            print(f"Warning: Feedback query failed, creating table: {str(e)}")
+            db.session.rollback()
+            try:
+                from app.models import Feedback
+                Feedback.__table__.create(db.engine, checkfirst=True)
+                db.session.commit()
+                existing_feedback = Feedback.query.filter_by(request_id=request_id).first()
+            except Exception as e2:
+                db.session.rollback()
+                return jsonify({"error": f"Database error: {str(e2)}"}), 500
+        
+        if existing_feedback:
+            # Update existing feedback
+            existing_feedback.rating = rating
+            existing_feedback.comment = comment
+            existing_feedback.anonymous = anonymous
+            existing_feedback.submitted_at = datetime.utcnow()
+        else:
+            # Create new feedback
+            new_feedback = Feedback(
+                request_id=request_id,
+                rating=rating,
+                comment=comment,
+                anonymous=anonymous
+            )
+            db.session.add(new_feedback)
+        
+        db.session.commit()
+        
+        return jsonify({
+            "message": "Feedback submitted successfully",
+            "feedback": {
+                "request_id": request_id,
+                "rating": rating,
+                "comment": comment,
+                "anonymous": anonymous
+            }
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error in submit_feedback: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to submit feedback: {str(e)}"}), 500
 
 
 # ---------------------------------
@@ -291,23 +427,89 @@ def submit_feedback(request_id):
 @main.route('/api/help_requests/<int:user_id>', methods=['GET'])
 @cross_origin()
 def get_help_requests_by_user(user_id):
-    help_requests = PinRequest.query.filter_by(user_id=user_id).all()
+    try:
+        # Check if feedback table exists
+        inspector = inspect(db.engine)
+        feedback_table_exists = 'feedback' in inspector.get_table_names()
+        
+        help_requests = PinRequest.query.filter_by(user_id=user_id).all()
 
-    data = []
-    for req in help_requests:
-        data.append({
-            "id": req.pin_requests_id,
-            "title": req.title,
-            "description": req.description,
-            "category": req.category.name if req.category else None,
-            "location": req.location,
-            "status": req.status,
-            "urgency": req.urgency,
-            "completion_note": req.completion_note,
-            "created_at": req.created_at.isoformat() if req.created_at else None,
-            "completed_at": req.completed_at.isoformat() if req.completed_at else None
-        })
-    return jsonify(data), 200
+        data = []
+        for req in help_requests:
+            # Safely access category
+            category_name = None
+            try:
+                category_name = req.category.name if req.category else None
+            except Exception:
+                db.session.rollback()
+                category_name = None
+            
+            # Safely access feedback only if table exists
+            feedback_data = None
+            if feedback_table_exists:
+                try:
+                    feedback = Feedback.query.filter_by(request_id=req.pin_requests_id).first()
+                    if feedback:
+                        feedback_data = {
+                            "rating": feedback.rating,
+                            "comment": feedback.comment,
+                            "anonymous": feedback.anonymous,
+                            "submitted_at": feedback.submitted_at.isoformat() if feedback.submitted_at else None
+                        }
+                except Exception as e:
+                    db.session.rollback()
+                    print(f"Warning: Could not access feedback for request {req.pin_requests_id}: {str(e)}")
+                    feedback_data = None
+
+            # Safely get preferred_time and special_requirements using raw SQL query
+            # These columns are not in the model definition to avoid SQLAlchemy query errors
+            preferred_time = None
+            special_requirements = None
+            try:
+                # Try to query the columns directly - if they don't exist, exception will be caught
+                result = db.session.execute(
+                    text("SELECT preferred_time, special_requirements FROM pin_requests WHERE pin_requests_id = :id"),
+                    {"id": req.pin_requests_id}
+                ).first()
+                if result:
+                    preferred_time = result[0] if result[0] else None
+                    special_requirements = result[1] if result[1] else None
+            except (OperationalError, ProgrammingError) as e:
+                # Columns don't exist yet - this is OK
+                preferred_time = None
+                special_requirements = None
+            except Exception:
+                # Other errors - just use None
+                preferred_time = None
+                special_requirements = None
+
+            data.append({
+                "id": req.pin_requests_id,
+                "title": req.title,
+                "description": req.description,
+                "category": category_name,
+                "location": req.location,
+                "status": req.status,
+                "urgency": req.urgency,
+                "completion_note": req.completion_note,
+                "preferred_time": preferred_time,
+                "preferredTime": preferred_time,  # Also provide camelCase for frontend
+                "special_requirements": special_requirements,
+                "specialRequirements": special_requirements,  # Also provide camelCase for frontend
+                "created_at": req.created_at.isoformat() if req.created_at else None,
+                "completed_at": req.completed_at.isoformat() if req.completed_at else None,
+                "feedback_rating": feedback_data["rating"] if feedback_data else None,
+                "feedback_comment": feedback_data["comment"] if feedback_data else None,
+                "feedback_anonymous": feedback_data["anonymous"] if feedback_data else None,
+                "feedback_submitted_at": feedback_data["submitted_at"] if feedback_data else None
+            })
+        return jsonify(data), 200
+    except Exception as e:
+        print(f"Error in get_help_requests_by_user: {str(e)}")
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to fetch requests: {str(e)}"}), 500
 
 
 # ---------------------------------
@@ -316,24 +518,68 @@ def get_help_requests_by_user(user_id):
 @main.route('/api/help_requests/open', methods=['GET'])
 @cross_origin()
 def get_open_help_requests():
-    # Query all open help requests
-    open_requests = PinRequest.query.filter_by(status='open').all()
+    try:
+        # Query all open help requests
+        open_requests = PinRequest.query.filter_by(status='open').all()
 
-    data = []
-    for req in open_requests:
-        data.append({
-            "id": req.pin_requests_id,
-            "title": req.title,
-            "description": req.description,
-            "category": req.category.name if req.category else None,
-            "requester_name": req.pin_user.name if req.pin_user else None,
-            "location": req.location,
-            "urgency": req.urgency,
-            "status": req.status,
-            "created_at": req.created_at.isoformat() if req.created_at else None
-        })
+        data = []
+        for req in open_requests:
+            # Safely get preferred_time and special_requirements using raw SQL
+            preferred_time = None
+            special_requirements = None
+            try:
+                result = db.session.execute(
+                    text("SELECT preferred_time, special_requirements FROM pin_requests WHERE pin_requests_id = :id"),
+                    {"id": req.pin_requests_id}
+                ).first()
+                if result:
+                    preferred_time = result[0] if result[0] else None
+                    special_requirements = result[1] if result[1] else None
+            except (OperationalError, ProgrammingError):
+                # Columns don't exist yet - this is OK
+                pass
+            except Exception:
+                pass
+            
+            # Safely access category
+            category_name = None
+            try:
+                category_name = req.category.name if req.category else None
+            except Exception:
+                db.session.rollback()
+                category_name = None
+            
+            # Safely access requester name
+            requester_name = None
+            try:
+                requester_name = req.pin_user.name if req.pin_user else None
+            except Exception:
+                db.session.rollback()
+                requester_name = None
+            
+            data.append({
+                "id": req.pin_requests_id,
+                "title": req.title,
+                "description": req.description,
+                "category": category_name,
+                "requester_name": requester_name,
+                "location": req.location,
+                "urgency": req.urgency,
+                "status": req.status,
+                "preferred_time": preferred_time,
+                "preferredTime": preferred_time,
+                "special_requirements": special_requirements,
+                "specialRequirements": special_requirements,
+                "created_at": req.created_at.isoformat() if req.created_at else None
+            })
 
-    return jsonify(data), 200
+        return jsonify(data), 200
+    except Exception as e:
+        print(f"Error in get_open_help_requests: {str(e)}")
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to fetch open requests: {str(e)}"}), 500
 
 # ---------------------------------
 # 📦Accepted requests (For CSR)
@@ -341,26 +587,63 @@ def get_open_help_requests():
 @main.route('/api/csr/accepted/<int:csr_id>', methods=['GET'])
 @cross_origin()
 def get_accepted_requests(csr_id):
-    matches = MatchHistory.query.filter_by(csr_id=csr_id).filter(
-        MatchHistory.match_status != 'completed'
-    ).all()
+    try:
+        matches = MatchHistory.query.filter_by(csr_id=csr_id).filter(
+            MatchHistory.match_status != 'completed'
+        ).all()
 
-    data = []
-    for m in matches:
-        req = PinRequest.query.get(m.request_id)
-        if req:
-            data.append({
-                "match_id": m.match_history_id,
-                "request_id": m.request_id,
-                "title": req.title,
-                "description": req.description,
-                "status": req.status,
-                "urgency": req.urgency,
-                "location": req.location,
-                "matched_at": m.matched_at.isoformat() if m.matched_at else None
-            })
+        data = []
+        for m in matches:
+            req = PinRequest.query.get(m.request_id)
+            if req:
+                # Safely get preferred_time and special_requirements using raw SQL
+                preferred_time = None
+                special_requirements = None
+                try:
+                    result = db.session.execute(
+                        text("SELECT preferred_time, special_requirements FROM pin_requests WHERE pin_requests_id = :id"),
+                        {"id": req.pin_requests_id}
+                    ).first()
+                    if result:
+                        preferred_time = result[0] if result[0] else None
+                        special_requirements = result[1] if result[1] else None
+                except (OperationalError, ProgrammingError):
+                    # Columns don't exist yet - this is OK
+                    pass
+                except Exception:
+                    pass
+                
+                # Safely access category
+                category_name = None
+                try:
+                    category_name = req.category.name if req.category else None
+                except Exception:
+                    db.session.rollback()
+                    category_name = None
+                
+                data.append({
+                    "match_id": m.match_history_id,
+                    "request_id": m.request_id,
+                    "title": req.title,
+                    "description": req.description,
+                    "status": req.status,
+                    "urgency": req.urgency,
+                    "location": req.location,
+                    "category": category_name,
+                    "preferred_time": preferred_time,
+                    "preferredTime": preferred_time,
+                    "special_requirements": special_requirements,
+                    "specialRequirements": special_requirements,
+                    "matched_at": m.matched_at.isoformat() if m.matched_at else None
+                })
 
-    return jsonify(data), 200
+        return jsonify(data), 200
+    except Exception as e:
+        print(f"Error in get_accepted_requests: {str(e)}")
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to fetch accepted requests: {str(e)}"}), 500
 
 # ---------------------------------
 # 📦Completed requests (For CSR)
@@ -368,24 +651,82 @@ def get_accepted_requests(csr_id):
 @main.route('/api/csr/completed/<int:csr_id>', methods=['GET'])
 @cross_origin()
 def get_completed_requests(csr_id):
-    matches = MatchHistory.query.filter_by(csr_id=csr_id, match_status="completed").all()
+    try:
+        matches = MatchHistory.query.filter_by(csr_id=csr_id, match_status="completed").all()
 
-    data = []
-    for m in matches:
-        req = PinRequest.query.get(m.request_id)
-        if req:
-            data.append({
-                "match_id": m.match_history_id,
-                "request_id": m.request_id,
-                "title": req.title,
-                "description": req.description,
-                "status": req.status,
-                "urgency": req.urgency,
-                "location": req.location,
-                "completed_at": req.completed_at.isoformat() if req.completed_at else None
-            })
+        data = []
+        for m in matches:
+            req = PinRequest.query.get(m.request_id)
+            if req:
+                # Safely access feedback using direct query
+                feedback_data = None
+                try:
+                    # Check if feedback table exists before querying
+                    inspector = inspect(db.engine)
+                    if 'feedback' in inspector.get_table_names():
+                        feedback = Feedback.query.filter_by(request_id=req.pin_requests_id).first()
+                        if feedback:
+                            feedback_data = {
+                                "rating": feedback.rating,
+                                "comment": feedback.comment,
+                                "anonymous": feedback.anonymous,
+                                "submitted_at": feedback.submitted_at.isoformat() if feedback.submitted_at else None
+                            }
+                except Exception:
+                    db.session.rollback()
+                    feedback_data = None
 
-    return jsonify(data), 200
+                # Safely get preferred_time and special_requirements using raw SQL
+                preferred_time = None
+                special_requirements = None
+                try:
+                    result = db.session.execute(
+                        text("SELECT preferred_time, special_requirements FROM pin_requests WHERE pin_requests_id = :id"),
+                        {"id": req.pin_requests_id}
+                    ).first()
+                    if result:
+                        preferred_time = result[0] if result[0] else None
+                        special_requirements = result[1] if result[1] else None
+                except (OperationalError, ProgrammingError):
+                    # Columns don't exist yet - this is OK
+                    pass
+                except Exception:
+                    pass
+                
+                # Safely access category
+                category_name = None
+                try:
+                    category_name = req.category.name if req.category else None
+                except Exception:
+                    db.session.rollback()
+                    category_name = None
+                
+                data.append({
+                    "match_id": m.match_history_id,
+                    "request_id": m.request_id,
+                    "title": req.title,
+                    "description": req.description,
+                    "status": req.status,
+                    "urgency": req.urgency,
+                    "location": req.location,
+                    "category": category_name,
+                    "preferred_time": preferred_time,
+                    "preferredTime": preferred_time,
+                    "special_requirements": special_requirements,
+                    "specialRequirements": special_requirements,
+                    "completed_at": req.completed_at.isoformat() if req.completed_at else None,
+                    "feedback_rating": feedback_data["rating"] if feedback_data else None,
+                    "feedback_comment": feedback_data["comment"] if feedback_data else None,
+                    "feedback_anonymous": feedback_data["anonymous"] if feedback_data else None,
+                    "feedback_submitted_at": feedback_data["submitted_at"] if feedback_data else None
+                })
+
+        return jsonify(data), 200
+    except Exception as e:
+        print(f"Error in get_completed_requests: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to fetch completed requests: {str(e)}"}), 500
 
 
 # ---------------------------------
@@ -394,25 +735,61 @@ def get_completed_requests(csr_id):
 @main.route('/api/csr/shortlist/<int:csr_id>', methods=['GET'])
 @cross_origin()
 def get_shortlisted_requests(csr_id):
-    shortlist_items = CSRShortlist.query.filter_by(csr_id=csr_id).all()
+    try:
+        shortlist_items = CSRShortlist.query.filter_by(csr_id=csr_id).all()
 
-    data = []
-    for s in shortlist_items:
-        req = PinRequest.query.get(s.request_id)
-        if req:
-            data.append({
-                "shortlist_id": s.csr_shortlist_id,
-                "id": req.pin_requests_id,
-                "title": req.title,
-                "description": req.description,
-                "status": req.status,
-                "urgency": req.urgency,
-                "location": req.location,
-                "category": req.category.name if req.category else None,
-                "shortlisted_at": s.shortlisted_at.isoformat() if s.shortlisted_at else None
-            })
+        data = []
+        for s in shortlist_items:
+            req = PinRequest.query.get(s.request_id)
+            if req:
+                # Safely get preferred_time and special_requirements using raw SQL
+                preferred_time = None
+                special_requirements = None
+                try:
+                    result = db.session.execute(
+                        text("SELECT preferred_time, special_requirements FROM pin_requests WHERE pin_requests_id = :id"),
+                        {"id": req.pin_requests_id}
+                    ).first()
+                    if result:
+                        preferred_time = result[0] if result[0] else None
+                        special_requirements = result[1] if result[1] else None
+                except (OperationalError, ProgrammingError):
+                    # Columns don't exist yet - this is OK
+                    pass
+                except Exception:
+                    pass
+                
+                # Safely access category
+                category_name = None
+                try:
+                    category_name = req.category.name if req.category else None
+                except Exception:
+                    db.session.rollback()
+                    category_name = None
+                
+                data.append({
+                    "shortlist_id": s.csr_shortlist_id,
+                    "id": req.pin_requests_id,
+                    "title": req.title,
+                    "description": req.description,
+                    "status": req.status,
+                    "urgency": req.urgency,
+                    "location": req.location,
+                    "category": category_name,
+                    "preferred_time": preferred_time,
+                    "preferredTime": preferred_time,
+                    "special_requirements": special_requirements,
+                    "specialRequirements": special_requirements,
+                    "shortlisted_at": s.shortlisted_at.isoformat() if s.shortlisted_at else None
+                })
 
-    return jsonify(data), 200
+        return jsonify(data), 200
+    except Exception as e:
+        print(f"Error in get_shortlisted_requests: {str(e)}")
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to fetch shortlisted requests: {str(e)}"}), 500
 
 
 # ---------------------------------
@@ -421,24 +798,61 @@ def get_shortlisted_requests(csr_id):
 @main.route('/api/csr/accepted', methods=['GET'])
 @cross_origin()
 def get_accepted_requests_global():
-    matches = MatchHistory.query.filter(MatchHistory.match_status != 'completed').all()
+    try:
+        matches = MatchHistory.query.filter(MatchHistory.match_status != 'completed').all()
 
-    data = []
-    for m in matches:
-        req = PinRequest.query.get(m.request_id)
-        if req:
-            data.append({
-                "match_id": m.match_history_id,
-                "request_id": m.request_id,
-                "title": req.title,
-                "description": req.description,
-                "status": req.status,
-                "urgency": req.urgency,
-                "location": req.location,
-                "matched_at": m.matched_at.isoformat() if m.matched_at else None
-            })
+        data = []
+        for m in matches:
+            req = PinRequest.query.get(m.request_id)
+            if req:
+                # Safely get preferred_time and special_requirements using raw SQL
+                preferred_time = None
+                special_requirements = None
+                try:
+                    result = db.session.execute(
+                        text("SELECT preferred_time, special_requirements FROM pin_requests WHERE pin_requests_id = :id"),
+                        {"id": req.pin_requests_id}
+                    ).first()
+                    if result:
+                        preferred_time = result[0] if result[0] else None
+                        special_requirements = result[1] if result[1] else None
+                except (OperationalError, ProgrammingError):
+                    # Columns don't exist yet - this is OK
+                    pass
+                except Exception:
+                    pass
+                
+                # Safely access category
+                category_name = None
+                try:
+                    category_name = req.category.name if req.category else None
+                except Exception:
+                    db.session.rollback()
+                    category_name = None
+                
+                data.append({
+                    "match_id": m.match_history_id,
+                    "request_id": m.request_id,
+                    "title": req.title,
+                    "description": req.description,
+                    "status": req.status,
+                    "urgency": req.urgency,
+                    "location": req.location,
+                    "category": category_name,
+                    "preferred_time": preferred_time,
+                    "preferredTime": preferred_time,
+                    "special_requirements": special_requirements,
+                    "specialRequirements": special_requirements,
+                    "matched_at": m.matched_at.isoformat() if m.matched_at else None
+                })
 
-    return jsonify(data), 200
+        return jsonify(data), 200
+    except Exception as e:
+        print(f"Error in get_accepted_requests_global: {str(e)}")
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to fetch accepted requests: {str(e)}"}), 500
 
 
 # ---------------------------------
@@ -447,24 +861,82 @@ def get_accepted_requests_global():
 @main.route('/api/csr/completed', methods=['GET'])
 @cross_origin()
 def get_completed_requests_global():
-    matches = MatchHistory.query.filter_by(match_status="completed").all()
+    try:
+        matches = MatchHistory.query.filter_by(match_status="completed").all()
 
-    data = []
-    for m in matches:
-        req = PinRequest.query.get(m.request_id)
-        if req:
-            data.append({
-                "match_id": m.match_history_id,
-                "request_id": m.request_id,
-                "title": req.title,
-                "description": req.description,
-                "status": req.status,
-                "urgency": req.urgency,
-                "location": req.location,
-                "completed_at": req.completed_at.isoformat() if req.completed_at else None
-            })
+        data = []
+        for m in matches:
+            req = PinRequest.query.get(m.request_id)
+            if req:
+                # Safely access feedback using direct query
+                feedback_data = None
+                try:
+                    # Check if feedback table exists before querying
+                    inspector = inspect(db.engine)
+                    if 'feedback' in inspector.get_table_names():
+                        feedback = Feedback.query.filter_by(request_id=req.pin_requests_id).first()
+                        if feedback:
+                            feedback_data = {
+                                "rating": feedback.rating,
+                                "comment": feedback.comment,
+                                "anonymous": feedback.anonymous,
+                                "submitted_at": feedback.submitted_at.isoformat() if feedback.submitted_at else None
+                            }
+                except Exception:
+                    db.session.rollback()
+                    feedback_data = None
 
-    return jsonify(data), 200
+                # Safely get preferred_time and special_requirements using raw SQL
+                preferred_time = None
+                special_requirements = None
+                try:
+                    result = db.session.execute(
+                        text("SELECT preferred_time, special_requirements FROM pin_requests WHERE pin_requests_id = :id"),
+                        {"id": req.pin_requests_id}
+                    ).first()
+                    if result:
+                        preferred_time = result[0] if result[0] else None
+                        special_requirements = result[1] if result[1] else None
+                except (OperationalError, ProgrammingError):
+                    # Columns don't exist yet - this is OK
+                    pass
+                except Exception:
+                    pass
+                
+                # Safely access category
+                category_name = None
+                try:
+                    category_name = req.category.name if req.category else None
+                except Exception:
+                    db.session.rollback()
+                    category_name = None
+                
+                data.append({
+                    "match_id": m.match_history_id,
+                    "request_id": m.request_id,
+                    "title": req.title,
+                    "description": req.description,
+                    "status": req.status,
+                    "urgency": req.urgency,
+                    "location": req.location,
+                    "category": category_name,
+                    "preferred_time": preferred_time,
+                    "preferredTime": preferred_time,
+                    "special_requirements": special_requirements,
+                    "specialRequirements": special_requirements,
+                    "completed_at": req.completed_at.isoformat() if req.completed_at else None,
+                    "feedback_rating": feedback_data["rating"] if feedback_data else None,
+                    "feedback_comment": feedback_data["comment"] if feedback_data else None,
+                    "feedback_anonymous": feedback_data["anonymous"] if feedback_data else None,
+                    "feedback_submitted_at": feedback_data["submitted_at"] if feedback_data else None
+                })
+
+        return jsonify(data), 200
+    except Exception as e:
+        print(f"Error in get_completed_requests_global: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to fetch completed requests: {str(e)}"}), 500
 
 
 # ---------------------------------
@@ -473,25 +945,61 @@ def get_completed_requests_global():
 @main.route('/api/csr/shortlist', methods=['GET'])
 @cross_origin()
 def get_shortlisted_requests_global():
-    shortlist_items = CSRShortlist.query.all()
+    try:
+        shortlist_items = CSRShortlist.query.all()
 
-    data = []
-    for s in shortlist_items:
-        req = PinRequest.query.get(s.request_id)
-        if req:
-            data.append({
-                "shortlist_id": s.csr_shortlist_id,
-                "id": req.pin_requests_id,
-                "title": req.title,
-                "description": req.description,
-                "status": req.status,
-                "urgency": req.urgency,
-                "location": req.location,
-                "category": req.category.name if req.category else None,
-                "shortlisted_at": s.shortlisted_at.isoformat() if s.shortlisted_at else None
-            })
+        data = []
+        for s in shortlist_items:
+            req = PinRequest.query.get(s.request_id)
+            if req:
+                # Safely get preferred_time and special_requirements using raw SQL
+                preferred_time = None
+                special_requirements = None
+                try:
+                    result = db.session.execute(
+                        text("SELECT preferred_time, special_requirements FROM pin_requests WHERE pin_requests_id = :id"),
+                        {"id": req.pin_requests_id}
+                    ).first()
+                    if result:
+                        preferred_time = result[0] if result[0] else None
+                        special_requirements = result[1] if result[1] else None
+                except (OperationalError, ProgrammingError):
+                    # Columns don't exist yet - this is OK
+                    pass
+                except Exception:
+                    pass
+                
+                # Safely access category
+                category_name = None
+                try:
+                    category_name = req.category.name if req.category else None
+                except Exception:
+                    db.session.rollback()
+                    category_name = None
+                
+                data.append({
+                    "shortlist_id": s.csr_shortlist_id,
+                    "id": req.pin_requests_id,
+                    "title": req.title,
+                    "description": req.description,
+                    "status": req.status,
+                    "urgency": req.urgency,
+                    "location": req.location,
+                    "category": category_name,
+                    "preferred_time": preferred_time,
+                    "preferredTime": preferred_time,
+                    "special_requirements": special_requirements,
+                    "specialRequirements": special_requirements,
+                    "shortlisted_at": s.shortlisted_at.isoformat() if s.shortlisted_at else None
+                })
 
-    return jsonify(data), 200
+        return jsonify(data), 200
+    except Exception as e:
+        print(f"Error in get_shortlisted_requests_global: {str(e)}")
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to fetch shortlisted requests: {str(e)}"}), 500
 
 
 # ---------------------------------
