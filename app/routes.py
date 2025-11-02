@@ -1127,3 +1127,23 @@ def complete_request_action(req_id):
     return jsonify({"message": "completed"}), 200
 
     return jsonify(data), 200
+
+# ---------------------------------
+# Get Categories
+# ---------------------------------
+@main.route('/api/categories', methods=['GET'])
+@cross_origin()
+def get_categories():
+    try:
+        categories = Category.query.all()
+        result = [
+            {
+                "id": c.categories_id,
+                "name": c.name,
+                "description": c.description
+            }
+            for c in categories
+        ]
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch categories: {str(e)}"}), 500

@@ -32,6 +32,7 @@ const PINDashboard = () => {
   const [completedRequests, setCompletedRequests] = useState([]);
   const [requestHistory, setRequestHistory] = useState([]);
 
+
   // Filters and search
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // all / open / urgent / completed
@@ -50,7 +51,7 @@ const PINDashboard = () => {
     preferredTime: '',
     specialRequirements: ''
   });
-
+  
   // Feedback dialog state
   const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
@@ -252,7 +253,7 @@ const PINDashboard = () => {
         user_id: userId,
         urgency: urgencyMap[requestForm.urgency] || 'medium',
         location: requestForm.location || '',
-        category_id: null // Set to null since category is a string name, not an ID
+        category_id: requestForm.category_id || null
       };
       
       if (editingRequest){
@@ -670,7 +671,7 @@ const PINDashboard = () => {
               required
             />
             <Stack direction={{ xs:'column', sm:'row' }} spacing={2}>
-              <TextField 
+            <TextField 
                 label="Category" 
                 value={requestForm.category} 
                 onChange={e=>setRequestForm(f=>({ ...f, category:e.target.value }))} 
@@ -684,6 +685,7 @@ const PINDashboard = () => {
                 <MenuItem value="technology">Technology Help</MenuItem>
                 <MenuItem value="other">Other</MenuItem>
               </TextField>
+            
               <TextField 
                 label="Urgency Level" 
                 value={requestForm.urgency} 
