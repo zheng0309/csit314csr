@@ -10,6 +10,16 @@ import {
   Category as CategoryIcon, CheckCircle, Replay, FilterList, Timeline
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
+
+// API setup
+const api = axios.create({
+  baseURL: 'http://localhost:5000',
+  headers: { 'Content-Type': 'application/json' }
+});
+
+// Mock mode flag (set to false for production)
+const USE_MOCKS = false;
 
 // =============================================
 // Component
@@ -65,7 +75,7 @@ export default function PMDashboard(){
   };
 
   const handleLogout = ()=>{
-    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     sessionStorage.clear();
     navigate('/', { replace:true });
   };
@@ -154,7 +164,7 @@ export default function PMDashboard(){
               <Refresh/>
             </IconButton>
           </Tooltip>
-          <Button variant="contained" color="error" startIcon={<Logout/>} onClick={()=>{ localStorage.removeItem('token'); sessionStorage.clear(); navigate('/',{replace:true}); }}>
+          <Button variant="contained" color="error" startIcon={<Logout/>} onClick={handleLogout}>
             Logout
           </Button>
         </Stack>

@@ -1,10 +1,10 @@
 from flask import Blueprint, jsonify, request, session
 from app.database import db
-from app.models import User, PinRequest, MatchHistory, CSRShortlist, Feedback
+from app.models import User, PinRequest, MatchHistory, CSRShortlist, Feedback, Category
 from flask_cors import cross_origin
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy.exc import OperationalError, ProgrammingError
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, text, func, cast, Date
 
 main = Blueprint('main', __name__)
 
@@ -1147,3 +1147,291 @@ def get_categories():
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": f"Failed to fetch categories: {str(e)}"}), 500
+
+# ---------------------------------
+# 🛠️ Platform Manager Endpoints
+# ---------------------------------
+
+# Get all categories for PM dashboard
+@main.route('/api/pm/categories', methods=['GET'])
+@cross_origin()
+def get_pm_categories():
+    try:
+        categories = Category.query.all()
+        result = []
+        for cat in categories:
+            # Count usage (how many requests use this category)
+            usage_count = PinRequest.query.filter_by(category_id=cat.categories_id).count()
+            result.append({
+                "id": cat.categories_id,
+                "name": cat.name,
+                "description": cat.description or "",
+                "usageCount": usage_count,
+                "active": True  # Categories are active by default
+            })
+        return jsonify(result), 200
+    except Exception as e:
+        print(f"Error in get_pm_categories: {str(e)}")
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to fetch categories: {str(e)}"}), 500
+
+
+# Create new category
+@main.route('/api/pm/categories', methods=['POST'])
+@cross_origin()
+def create_pm_category():
+    try:
+        data = request.get_json()
+        if not data or not data.get('name'):
+            return jsonify({"error": "Category name is required"}), 400
+        
+        new_category = Category(
+            name=data['name'],
+            description=data.get('description', '')
+        )
+        db.session.add(new_category)
+        db.session.commit()
+        
+        return jsonify({
+            "id": new_category.categories_id,
+            "name": new_category.name,
+            "description": new_category.description or "",
+            "usageCount": 0,
+            "active": True
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error in create_pm_category: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to create category: {str(e)}"}), 500
+
+
+# Update category
+@main.route('/api/pm/categories/<int:cat_id>', methods=['PATCH'])
+@cross_origin()
+def update_pm_category(cat_id):
+    try:
+        data = request.get_json()
+        category = Category.query.get(cat_id)
+        if not category:
+            return jsonify({"error": "Category not found"}), 404
+        
+        if data.get('name'):
+            category.name = data['name']
+        if 'description' in data:
+            category.description = data['description']
+        
+        db.session.commit()
+        
+        usage_count = PinRequest.query.filter_by(category_id=category.categories_id).count()
+        return jsonify({
+            "id": category.categories_id,
+            "name": category.name,
+            "description": category.description or "",
+            "usageCount": usage_count,
+            "active": True
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error in update_pm_category: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to update category: {str(e)}"}), 500
+
+
+# Delete category
+@main.route('/api/pm/categories/<int:cat_id>', methods=['DELETE'])
+@cross_origin()
+def delete_pm_category(cat_id):
+    try:
+        category = Category.query.get(cat_id)
+        if not category:
+            return jsonify({"error": "Category not found"}), 404
+        
+        # Check if category is in use
+        usage_count = PinRequest.query.filter_by(category_id=cat_id).count()
+        if usage_count > 0:
+            return jsonify({"error": f"Cannot delete category: it is used by {usage_count} request(s)"}), 400
+        
+        db.session.delete(category)
+        db.session.commit()
+        
+        return jsonify({"message": "Category deleted successfully"}), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error in delete_pm_category: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to delete category: {str(e)}"}), 500
+
+
+# Get all requests for PM dashboard
+@main.route('/api/pm/requests', methods=['GET'])
+@cross_origin()
+def get_pm_requests():
+    try:
+        requests = PinRequest.query.all()
+        result = []
+        for req in requests:
+            # Safely get preferred_time and special_requirements
+            preferred_time = None
+            special_requirements = None
+            try:
+                sql_result = db.session.execute(
+                    text("SELECT preferred_time, special_requirements FROM pin_requests WHERE pin_requests_id = :id"),
+                    {"id": req.pin_requests_id}
+                ).first()
+                if sql_result:
+                    preferred_time = sql_result[0] if sql_result[0] else None
+                    special_requirements = sql_result[1] if sql_result[1] else None
+            except (OperationalError, ProgrammingError):
+                pass
+            except Exception:
+                pass
+            
+            # Get category name
+            category_name = None
+            try:
+                category_name = req.category.name if req.category else None
+            except Exception:
+                db.session.rollback()
+                category_name = None
+            
+            # Get requester name
+            requester_name = None
+            try:
+                requester_name = req.pin_user.name if req.pin_user else None
+            except Exception:
+                db.session.rollback()
+                requester_name = None
+            
+            # Get assigned CSR (from match_history)
+            assigned_to = None
+            try:
+                match = MatchHistory.query.filter_by(request_id=req.pin_requests_id, match_status='pending').first()
+                if match and match.csr_match:
+                    assigned_to = match.csr_match.name
+            except Exception:
+                db.session.rollback()
+                assigned_to = None
+            
+            result.append({
+                "id": req.pin_requests_id,
+                "title": req.title,
+                "description": req.description,
+                "category": category_name or "Uncategorized",
+                "status": req.status,
+                "urgency": req.urgency,
+                "urgent": req.urgency == 'high',
+                "assignedTo": assigned_to,
+                "location": req.location,
+                "preferredTime": preferred_time,
+                "specialRequirements": special_requirements,
+                "createdAt": req.created_at.isoformat() if req.created_at else None,
+                "completedAt": req.completed_at.isoformat() if req.completed_at else None
+            })
+        
+        return jsonify(result), 200
+    except Exception as e:
+        print(f"Error in get_pm_requests: {str(e)}")
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to fetch requests: {str(e)}"}), 500
+
+
+# Update request status (for PM)
+@main.route('/api/pm/requests/<int:req_id>/status', methods=['POST'])
+@cross_origin()
+def update_pm_request_status(req_id):
+    try:
+        data = request.get_json()
+        if not data or not data.get('status'):
+            return jsonify({"error": "Status is required"}), 400
+        
+        req = PinRequest.query.get(req_id)
+        if not req:
+            return jsonify({"error": "Request not found"}), 404
+        
+        status = data['status']
+        req.status = status
+        
+        if status == 'completed' and not req.completed_at:
+            req.completed_at = datetime.utcnow()
+        
+        db.session.commit()
+        
+        return jsonify({"message": f"Request status updated to {status}"}), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error in update_pm_request_status: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to update request status: {str(e)}"}), 500
+
+
+# Get analytics data for PM dashboard
+@main.route('/api/pm/analytics', methods=['GET'])
+@cross_origin()
+def get_pm_analytics():
+    try:
+        # Get date ranges
+        now = datetime.utcnow()
+        today = now.date()
+        
+        # Calculate week start (7 days ago)
+        week_start = today - timedelta(days=7)
+        
+        # Calculate month start (first day of current month)
+        month_start = today.replace(day=1)
+        
+        # Daily analytics (today)
+        daily_created = PinRequest.query.filter(
+            func.date(PinRequest.created_at) == today
+        ).count()
+        daily_closed = PinRequest.query.filter(
+            func.date(PinRequest.completed_at) == today,
+            PinRequest.status == 'completed'
+        ).count()
+        
+        # Weekly analytics (last 7 days)
+        weekly_created = PinRequest.query.filter(
+            func.date(PinRequest.created_at) >= week_start
+        ).count()
+        weekly_closed = PinRequest.query.filter(
+            func.date(PinRequest.completed_at) >= week_start,
+            PinRequest.status == 'completed'
+        ).count()
+        
+        # Monthly analytics (this month)
+        monthly_created = PinRequest.query.filter(
+            func.date(PinRequest.created_at) >= month_start
+        ).count()
+        monthly_closed = PinRequest.query.filter(
+            func.date(PinRequest.completed_at) >= month_start,
+            PinRequest.status == 'completed'
+        ).count()
+        
+        return jsonify({
+            "daily": {
+                "created": daily_created,
+                "closed": daily_closed
+            },
+            "weekly": {
+                "created": weekly_created,
+                "closed": weekly_closed
+            },
+            "monthly": {
+                "created": monthly_created,
+                "closed": monthly_closed
+            }
+        }), 200
+    except Exception as e:
+        print(f"Error in get_pm_analytics: {str(e)}")
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to fetch analytics: {str(e)}"}), 500
