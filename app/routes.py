@@ -176,6 +176,116 @@ def create_help_request():
 
 
 # ---------------------------------
+# ✏️ Update Help Request (PATCH)
+# ---------------------------------
+@main.route('/api/help-requests/<int:request_id>', methods=['PATCH'])
+@cross_origin()
+def update_help_request(request_id):
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        # Use filter_by with primary key to be more explicit
+        req = PinRequest.query.filter_by(pin_requests_id=request_id).first()
+        if not req:
+            return jsonify({"error": f"Request not found with id: {request_id}"}), 404
+        
+        # Update fields if provided
+        if 'title' in data:
+            req.title = data['title']
+        if 'description' in data:
+            req.description = data['description']
+        if 'urgency' in data:
+            req.urgency = data['urgency']
+        if 'location' in data:
+            req.location = data['location']
+        if 'category_id' in data:
+            req.category_id = data['category_id'] if data['category_id'] else None
+        if 'status' in data:
+            req.status = data['status']
+        
+        db.session.commit()
+        
+        return jsonify({
+            "message": "Request updated successfully",
+            "request": {
+                "id": req.pin_requests_id,
+                "title": req.title,
+                "description": req.description,
+                "urgency": req.urgency,
+                "status": req.status,
+                "location": req.location,
+                "user_id": req.user_id,
+                "category": req.category.name if req.category else None,
+                "updated_at": req.created_at.isoformat() if req.created_at else None
+            }
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to update request: {str(e)}"}), 500
+
+
+# ---------------------------------
+# 🗑️ Delete Help Request (DELETE)
+# ---------------------------------
+@main.route('/api/help-requests/<int:request_id>', methods=['DELETE'])
+@cross_origin()
+def delete_help_request(request_id):
+    try:
+        # Use filter_by with primary key to be more explicit
+        req = PinRequest.query.filter_by(pin_requests_id=request_id).first()
+        
+        if not req:
+            return jsonify({"error": f"Request not found with id: {request_id}"}), 404
+        
+        db.session.delete(req)
+        db.session.commit()
+        
+        return jsonify({"message": "Request deleted successfully"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to delete request: {str(e)}"}), 500
+
+
+# ---------------------------------
+# 📝 Submit Feedback for Request (POST)
+# ---------------------------------
+@main.route('/api/help-requests/<int:request_id>/feedback', methods=['POST'])
+@cross_origin()
+def submit_feedback(request_id):
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({"error": "No feedback data provided"}), 400
+    
+    req = PinRequest.query.filter_by(pin_requests_id=request_id).first()
+    if not req:
+        return jsonify({"error": "Request not found"}), 404
+    
+    # Store feedback data (you may want to create a Feedback model for this)
+    # For now, we'll store it in completion_note or you can add a feedback field
+    rating = data.get('rating', 0)
+    comment = data.get('comment', '')
+    anonymous = data.get('anonymous', False)
+    
+    # TODO: Create a Feedback model if you want to store feedback separately
+    # For now, just return success
+    # You could store this in a new table or add fields to PinRequest model
+    
+    return jsonify({
+        "message": "Feedback submitted successfully",
+        "feedback": {
+            "request_id": request_id,
+            "rating": rating,
+            "comment": comment,
+            "anonymous": anonymous
+        }
+    }), 201
+
+
+# ---------------------------------
 # 📦 Get Help Requests by PIN ID to see "status"
 # ---------------------------------
 @main.route('/api/help_requests/<int:user_id>', methods=['GET'])

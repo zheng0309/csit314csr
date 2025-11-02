@@ -14,6 +14,9 @@ import {
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
+// Mock mode flag - set to true for development/testing
+const USE_MOCKS = false;
+
 // =============================================
 // PINDashboard Component
 // =============================================
@@ -59,18 +62,89 @@ const PINDashboard = () => {
 
   const fetchPINData = async () => {
     try{
-      const [activeRes, completedRes, historyRes] = await Promise.all([
-        axios.get('https://localhost:5000/api/pin/requests/active'),
-        axios.get('https://localhost:5000/api/pin/requests/completed'),
-        axios.get('https://localhost:5000/api/pin/requests/history'),
-      ]);
-      setActiveRequests(Array.isArray(activeRes.data) ? activeRes.data : (activeRes.data?.items||[]));
-      setCompletedRequests(Array.isArray(completedRes.data) ? completedRes.data : (completedRes.data?.items||[]));
-      setRequestHistory(Array.isArray(historyRes.data) ? historyRes.data : (historyRes.data?.items||[]));
+      // Get user ID from localStorage
+      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      const userId = user?.users_id || user?.id;
+      
+      if (!userId) {
+        console.warn('User ID not found in localStorage');
+        // Don't redirect here - let ProtectedRoute handle authentication
+        setActiveRequests([]);
+        setCompletedRequests([]);
+        setRequestHistory([]);
+        setToast({ open:true, msg:'User not found. Please login again.', severity:'error' });
+        return;
+      }
+
+      // Fetch all requests for this user ONLY
+      // Backend endpoint filters by user_id, so should only return this user's requests
+      const response = await axios.get(`http://localhost:5000/api/help_requests/${userId}`);
+      const allRequests = Array.isArray(response.data) ? response.data : [];
+      
+      // Double-check: ensure we only show requests belonging to this user
+      // (Backend should already filter, but this is an extra safety check)
+      const userRequests = allRequests.filter(r => {
+        const reqUserId = r.user_id || r.users_id;
+        return reqUserId === userId || !reqUserId; // Include only if matches or no user_id (shouldn't happen)
+      });
+      
+      // Normalize request data to match UI expectations
+      const normalizedRequests = userRequests.map(r => ({
+        id: r.id || r.pin_requests_id,
+        title: r.title,
+        description: r.description,
+        category: r.category || '',
+        urgency: r.urgency || 'normal',
+        location: r.location || '',
+        status: r.status || 'open',
+        preferredTime: r.preferred_time || r.preferredTime || '',
+        specialRequirements: r.special_requirements || r.specialRequirements || '',
+        viewCount: r.view_count || r.viewCount || 0,
+        shortlistCount: r.shortlist_count || r.shortlistCount || 0,
+        assignedTo: r.assigned_to || r.assignedTo || null,
+        contactInfo: r.contact_info || r.contactInfo || null,
+        createdAt: r.created_at || r.createdAt,
+        updatedAt: r.updated_at || r.updatedAt || r.created_at || r.createdAt,
+        completedAt: r.completed_at || r.completedAt
+      }));
+      
+      // Filter requests by status
+      const active = normalizedRequests.filter(r => 
+        r.status === 'open' || r.status === 'in-progress' || !r.status || r.status === ''
+      );
+      const completed = normalizedRequests.filter(r => 
+        r.status === 'completed' || r.status === 'closed' || r.completedAt
+      );
+      
+      // History is all requests, sorted by date
+      const history = [...normalizedRequests].sort((a, b) => {
+        const dateA = new Date(a.updatedAt || a.createdAt || 0);
+        const dateB = new Date(b.updatedAt || b.createdAt || 0);
+        return dateB - dateA;
+      });
+      
+      setActiveRequests(active);
+      setCompletedRequests(completed);
+      setRequestHistory(history);
+      
       if (USE_MOCKS) setToast({ open:true, msg:'Mock mode — using sample data', severity:'info' });
     }catch(e){
-      console.error(e);
-      setToast({ open:true, msg:'Failed to fetch your requests', severity:'error' });
+      console.error('Fetch PIN data error:', e);
+      // Don't show error on initial load if it's a 404 or network error
+      // Just show empty state
+      if (e.response?.status === 404) {
+        // User might not have any requests yet - that's okay
+        setActiveRequests([]);
+        setCompletedRequests([]);
+        setRequestHistory([]);
+      } else {
+        const errorMsg = e.response?.data?.error || e.message || 'Failed to fetch your requests';
+        setToast({ open:true, msg: errorMsg, severity:'error' });
+        // Still set empty arrays so UI doesn't break
+        setActiveRequests([]);
+        setCompletedRequests([]);
+        setRequestHistory([]);
+      }
     }finally{ setLoading(false); }
   };
 
@@ -82,10 +156,19 @@ const PINDashboard = () => {
     setRefreshing(false);
   };
 
-  const handleLogout = ()=>{
-    localStorage.removeItem('pinToken');
-    sessionStorage.clear();
-    navigate('/pin-login', { replace:true });
+  const handleLogout = async ()=>{
+    try {
+      // Call backend logout if endpoint exists
+      await axios.post('http://localhost:5000/api/logout', {}, { withCredentials: true }).catch(() => {});
+    } catch (err) {
+      // Ignore logout errors
+    } finally {
+      // Clear client session and redirect to login
+      localStorage.removeItem('user');
+      localStorage.removeItem('token');
+      sessionStorage.clear();
+      navigate('/', { replace: true });
+    }
   };
 
   // ===== Request CRUD Operations =====
@@ -140,28 +223,78 @@ const PINDashboard = () => {
         setToast({ open:true, msg:'Title and description are required', severity:'warning' });
         return;
       }
+
+      // Get user ID from localStorage
+      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      const userId = user?.users_id || user?.id;
+      
+      if (!userId) {
+        setToast({ open:true, msg:'User not found. Please login again.', severity:'error' });
+        navigate('/', { replace: true });
+        return;
+      }
+      
+      // Prepare request payload
+      // Map urgency values: 'normal' -> 'medium', 'urgent' -> 'high'
+      const urgencyMap = {
+        'low': 'low',
+        'normal': 'medium',
+        'urgent': 'high'
+      };
+      
+      // category_id must be an integer (foreign key) or null
+      // Since we're using category names, set category_id to null for now
+      // TODO: Map category names to category IDs if needed
+      const payload = {
+        title: requestForm.title,
+        description: requestForm.description,
+        user_id: userId,
+        urgency: urgencyMap[requestForm.urgency] || 'medium',
+        location: requestForm.location || '',
+        category_id: null // Set to null since category is a string name, not an ID
+      };
       
       if (editingRequest){
-        await axios.patch(`https://localhost:5000/api/pin/requests/${editingRequest.id}`, requestForm);
+        console.log('Attempting to edit request:', {
+          requestId: editingRequest.id,
+          url: `http://localhost:5000/api/help-requests/${editingRequest.id}`,
+          payload: payload
+        });
+        const response = await axios.patch(`http://localhost:5000/api/help-requests/${editingRequest.id}`, payload);
+        console.log('Edit response:', response);
         setToast({ open:true, msg:'Request updated successfully', severity:'success' });
       } else if (duplicatingRequest){
-        await axios.post('https://localhost:5000/api/pin/requests', requestForm);
+        await axios.post('http://localhost:5000/api/help-requests', payload);
         setToast({ open:true, msg:'Request duplicated successfully', severity:'success' });
       } else {
-        await axios.post('https://localhost:5000/api/pin/requests', requestForm);
+        await axios.post('http://localhost:5000/api/help-requests', payload);
         setToast({ open:true, msg:'Help request created successfully', severity:'success' });
       }
       setRequestDialogOpen(false);
       await fetchPINData();
     }catch(e){
-      console.error(e);
-      setToast({ open:true, msg:'Failed to save request', severity:'error' });
+      console.error('Save request error:', e);
+      console.error('Error details:', {
+        message: e.message,
+        response: e.response,
+        request: e.config,
+        stack: e.stack
+      });
+      
+      if (!e.response) {
+        // Network error - server not reachable
+        const errorMsg = `Cannot connect to server. Make sure backend is running on http://localhost:5000. Error: ${e.message}`;
+        setToast({ open:true, msg: errorMsg, severity:'error' });
+      } else {
+        const errorMsg = e.response?.data?.error || e.message || 'Failed to save request';
+        setToast({ open:true, msg: `${errorMsg} (Status: ${e.response.status})`, severity:'error' });
+      }
     }
   };
 
   const markAsComplete = async (requestId)=>{
     try{
-      await axios.patch(`https://localhost:5000/api/pin/requests/${requestId}`, { status: 'completed' });
+      await axios.patch(`http://localhost:5000/api/help-requests/${requestId}`, { status: 'completed' });
       setToast({ open:true, msg:'Request marked as completed', severity:'success' });
       await fetchPINData();
     }catch(e){
@@ -172,7 +305,7 @@ const PINDashboard = () => {
 
   const markAsUrgent = async (requestId)=>{
     try{
-      await axios.patch(`https://localhost:5000/api/pin/requests/${requestId}`, { urgency: 'urgent' });
+      await axios.patch(`http://localhost:5000/api/help-requests/${requestId}`, { urgency: 'high' });
       setToast({ open:true, msg:'Request marked as urgent', severity:'warning' });
       await fetchPINData();
     }catch(e){
@@ -183,7 +316,7 @@ const PINDashboard = () => {
 
   const cancelRequest = async (requestId)=>{
     try{
-      await axios.patch(`https://localhost:5000/api/pin/requests/${requestId}`, { status: 'cancelled' });
+      await axios.patch(`http://localhost:5000/api/help-requests/${requestId}`, { status: 'cancelled' });
       setToast({ open:true, msg:'Request cancelled', severity:'info' });
       await fetchPINData();
     }catch(e){
@@ -194,12 +327,14 @@ const PINDashboard = () => {
 
   const deleteRequest = async (requestId)=>{
     try{
-      await axios.delete(`https://localhost:5000/api/pin/requests/${requestId}`);
+      await axios.delete(`http://localhost:5000/api/help-requests/${requestId}`);
       setToast({ open:true, msg:'Request deleted', severity:'info' });
       await fetchPINData();
     }catch(e){
-      console.error(e);
-      setToast({ open:true, msg:'Failed to delete request', severity:'error' });
+      console.error('Delete error:', e);
+      const errorMsg = e.response?.data?.error || e.message || 'Failed to delete request';
+      const fullError = `${errorMsg} (ID: ${requestId}, Status: ${e.response?.status || 'N/A'})`;
+      setToast({ open:true, msg: fullError, severity:'error' });
     }
   };
 
@@ -216,7 +351,7 @@ const PINDashboard = () => {
 
   const submitFeedback = async ()=>{
     try{
-      await axios.post(`https://localhost:5000/api/pin/requests/${selectedRequest.id}/feedback`, feedbackForm);
+      await axios.post(`http://localhost:5000/api/help-requests/${selectedRequest.id}/feedback`, feedbackForm);
       setToast({ open:true, msg:'Thank you for your feedback!', severity:'success' });
       setFeedbackDialogOpen(false);
       await fetchPINData();
@@ -811,3 +946,5 @@ function CompletedRequestCard({ request, onFeedback, onPrint, onDuplicate }){
     </Paper>
   );
 }
+
+export default PINDashboard;
