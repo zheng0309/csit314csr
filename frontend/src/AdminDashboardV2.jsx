@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, memo } from 'react';
 import axios from 'axios';
 import {
   Container, Box, Typography, Button, IconButton, Stack, Tabs, Tab, Paper, Divider,
@@ -20,6 +20,7 @@ import { useNavigate } from 'react-router-dom';
 export default function AdminDashboard(){
   const API_BASE = import.meta?.env?.VITE_API_BASE || 'http://localhost:5000';
   const USE_MOCKS = false;
+  const axiosClient = useMemo(()=> axios.create({ baseURL: API_BASE, withCredentials: false }), [API_BASE]);
   const navigate = useNavigate();
   const [tab, setTab] = useState(0); // 0 Users, 1 Activity
   const [loading, setLoading] = useState(true);
@@ -38,7 +39,6 @@ export default function AdminDashboard(){
   const [userDialogOpen, setUserDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [userForm, setUserForm] = useState({
-    username: '',
     name: '',
     email: '',
     role: 'pin',
@@ -58,18 +58,31 @@ export default function AdminDashboard(){
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState(null);
 
+  const normalizeRole = (role)=>{
+    const map = {
+      'pin':'pin', 'PIN':'pin',
+      'csr_rep':'csr_rep', 'CSR Rep':'csr_rep', 'CSR':'csr_rep',
+      'platform_manager':'platform_manager', 'Platform Manager':'platform_manager', 'PM':'platform_manager',
+      'admin':'admin', 'Admin':'admin'
+    };
+    return map[role] || role || 'pin';
+  };
+
   const fetchAdminData = async () => {
     try{
-      const [usersRes, logsRes] = await Promise.all([
-        axios.get(`${API_BASE}/api/admin/users`),
-        axios.get(`${API_BASE}/api/admin/activity-logs`),
+      const [usersRes, statsRes] = await Promise.all([
+        axiosClient.get(`/api/admin/users`),
+        axiosClient.get(`/api/admin/user-stats`)
       ]);
-      setUsers(Array.isArray(usersRes.data) ? usersRes.data : (usersRes.data?.items||[]));
-      setActivityLogs(Array.isArray(logsRes.data) ? logsRes.data : (logsRes.data?.items||[]));
+      const incoming = Array.isArray(usersRes.data) ? usersRes.data : (usersRes.data?.items || usersRes.data?.users || []);
+      const normalized = incoming.map(u => ({ ...u, role: normalizeRole(u.role) }));
+      setUsers(normalized);
+      setActivityLogs([]);
       if (USE_MOCKS) setToast({ open:true, msg:'Admin Mock mode — using sample data', severity:'info' });
     }catch(e){
       console.error(e);
-      setToast({ open:true, msg:'Failed to fetch admin data', severity:'error' });
+      const msg = e?.response?.data?.error || `Failed to fetch admin data${e?.response?.status? ` (${e.response.status})`:''}`;
+      setToast({ open:true, msg: msg, severity:'error' });
     }finally{ setLoading(false); }
   };
 
@@ -84,38 +97,36 @@ export default function AdminDashboard(){
   const handleLogout = ()=>{
     localStorage.removeItem('adminToken');
     sessionStorage.clear();
-    navigate('/admin-login', { replace:true });
+    navigate('/', { replace:true });
   };
 
   // ===== User Management Operations =====
-  const openCreateUser = ()=>{
+  const openCreateUser = useCallback(()=>{
     setEditingUser(null);
     setUserForm({
-      username: '',
       name: '',
       email: '',
       role: 'pin',
       password: ''
     });
     setUserDialogOpen(true);
-  };
+  }, []);
 
-  const openEditUser = (user)=>{
+  const openEditUser = useCallback((user)=>{
     setEditingUser(user);
     setUserForm({
-      username: user.username,
       name: user.name,
       email: user.email,
       role: user.role,
       password: '' // Don't show existing password
     });
     setUserDialogOpen(true);
-  };
+  }, []);
 
   const saveUser = async ()=>{
     try{
-      if (!userForm.username.trim() || !userForm.name.trim() || !userForm.email.trim()) {
-        setToast({ open:true, msg:'Username, name and email are required', severity:'warning' });
+      if (!userForm.name.trim() || !userForm.email.trim()) {
+        setToast({ open:true, msg:'Name and email are required', severity:'warning' });
         return;
       }
 
@@ -131,11 +142,11 @@ export default function AdminDashboard(){
         if (!updateData.password) {
           delete updateData.password;
         }
-        await axios.patch(`${API_BASE}/api/admin/users/${editingUser.users_id}`, updateData);
+        await axiosClient.patch(`/api/admin/users/${editingUser.users_id}`, updateData);
         setToast({ open:true, msg:'User updated successfully', severity:'success' });
       } else {
         // Create new user
-        await axios.post(`${API_BASE}/api/admin/users`, userForm);
+        await axiosClient.post(`/api/admin/users/create`, userForm);
         setToast({ open:true, msg:'User created successfully', severity:'success' });
       }
       setUserDialogOpen(false);
@@ -146,7 +157,7 @@ export default function AdminDashboard(){
     }
   };
 
-  const openPasswordReset = (user)=>{
+  const openPasswordReset = useCallback((user)=>{
     setSelectedUser(user);
     setPasswordForm({
       newPassword: generateTempPassword(),
@@ -154,7 +165,7 @@ export default function AdminDashboard(){
       forceReset: true
     });
     setPasswordDialogOpen(true);
-  };
+  }, []);
 
   const resetPassword = async ()=>{
     try{
@@ -163,7 +174,7 @@ export default function AdminDashboard(){
         return;
       }
 
-      await axios.post(`${API_BASE}/api/admin/users/${selectedUser.users_id}/reset-password`, {
+      await axiosClient.post(`/api/admin/users/${selectedUser.users_id}/reset-password`, {
         newPassword: passwordForm.newPassword,
         forceReset: passwordForm.forceReset
       });
@@ -176,14 +187,14 @@ export default function AdminDashboard(){
     }
   };
 
-  const confirmDeleteUser = (user)=>{
+  const confirmDeleteUser = useCallback((user)=>{
     setUserToDelete(user);
     setDeleteDialogOpen(true);
-  };
+  }, []);
 
   const deleteUser = async ()=>{
     try{
-      await axios.delete(`${API_BASE}/api/admin/users/${userToDelete.users_id}`);
+      await axiosClient.delete(`/api/admin/users/${userToDelete.users_id}`);
       setToast({ open:true, msg:'User deleted successfully', severity:'info' });
       setDeleteDialogOpen(false);
       await fetchAdminData();
@@ -277,8 +288,8 @@ export default function AdminDashboard(){
         <Typography variant="subtitle1" sx={{ opacity:0.9, mt:0.5 }}>Manage user accounts and system access</Typography>
         <Stack direction="row" justifyContent="center" spacing={2} sx={{ mt:2 }}>
           <Tooltip title="Refresh">
-            <IconButton onClick={handleRefresh} disabled={refreshing} sx={{ border:'1px solid rgba(255,255,255,0.2)' }}>
-              <Refresh/>
+            <IconButton onClick={handleRefresh} disabled={refreshing} sx={{ border:'1px solid rgba(255,255,255,0.2)', color:'#fff' }}>
+              <Refresh sx={{ color:'#fff' }}/>
             </IconButton>
           </Tooltip>
           <Button variant="contained" color="primary" startIcon={<Add/>} onClick={openCreateUser}>
@@ -313,7 +324,7 @@ export default function AdminDashboard(){
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <StatCard 
-            label="CSR Users" 
+            label="CSR Representative" 
             value={users.filter(u => u.role === 'csr_rep').length} 
             color="#f59e0b"
             icon={<Person/>}
@@ -321,8 +332,8 @@ export default function AdminDashboard(){
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <StatCard 
-            label="Admin Users" 
-            value={users.filter(u => u.role === 'admin').length} 
+            label="Platform Managers" 
+            value={users.filter(u => u.role === 'platform_manager').length} 
             color="#ef4444"
             icon={<Security/>}
           />
@@ -373,68 +384,13 @@ export default function AdminDashboard(){
                     <TableCell align="right">Actions</TableCell>
                   </TableRow>
                 </TableHead>
-                <TableBody>
-                  {filteredUsers.map(user=> (
-                    <TableRow key={user.users_id} hover>
-                      <TableCell>
-                        <Avatar sx={{ width: 32, height: 32, bgcolor: getRoleColor(user.role) }}>
-                          {user.name.charAt(0).toUpperCase()}
-                        </Avatar>
-                      </TableCell>
-                      <TableCell>
-                        <Box>
-                          <Typography variant="subtitle2" sx={{ fontWeight:600 }}>{user.name}</Typography>
-                          <Typography variant="body2" sx={{ opacity:0.8 }}>@{user.username}</Typography>
-                          <Typography variant="body2" sx={{ opacity:0.8, fontSize:'0.75rem' }}>{user.email}</Typography>
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Chip 
-                          label={formatRoleLabel(user.role)} 
-                          size="small"
-                          color={getRoleChipColor(user.role)}
-                          variant="outlined"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2">
-                          {new Date(user.created_at).toLocaleDateString()}
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="right">
-                        <Stack direction="row" spacing={1} justifyContent="flex-end">
-                          <Tooltip title="Edit User">
-                            <IconButton size="small" onClick={()=>openEditUser(user)}>
-                              <Edit/>
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Reset Password">
-                            <IconButton size="small" onClick={()=>openPasswordReset(user)}>
-                              <VpnKey/>
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Delete User">
-                            <IconButton 
-                              size="small" 
-                              color="error" 
-                              onClick={()=>confirmDeleteUser(user)}
-                              disabled={user.role === 'admin' && users.filter(u => u.role === 'admin').length <= 1}
-                            >
-                              <Delete/>
-                            </IconButton>
-                          </Tooltip>
-                        </Stack>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {filteredUsers.length===0 && (
-                    <TableRow>
-                      <TableCell colSpan={5} align="center" sx={{ py:4, opacity:0.8 }}>
-                        No users found matching your criteria
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
+                <UsersTable 
+                  users={filteredUsers}
+                  totalUsers={users}
+                  onEditUser={openEditUser}
+                  onPasswordReset={openPasswordReset}
+                  onDeleteUser={confirmDeleteUser}
+                />
               </Table>
             </TableContainer>
           </Box>
@@ -509,14 +465,7 @@ export default function AdminDashboard(){
         </DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2} sx={{ mt:0.5 }}>
-            <TextField 
-              label="Username" 
-              value={userForm.username} 
-              onChange={e=>setUserForm(f=>({ ...f, username:e.target.value }))} 
-              autoFocus 
-              required
-              helperText="Unique identifier for login"
-            />
+            {/* Username is auto-generated on the backend; no manual input */}
             <TextField 
               label="Full Name" 
               value={userForm.name} 
@@ -673,6 +622,76 @@ function StatCard({ label, value, color, icon }){
     </Card>
   );
 }
+
+// =============================================
+// Memoized Users Table (prevents re-render on dialog typing)
+// =============================================
+const UsersTable = memo(function UsersTable({ users, totalUsers, onEditUser, onPasswordReset, onDeleteUser }){
+  return (
+    <TableBody>
+      {users.map(user=> (
+        <TableRow key={user.users_id} hover>
+          <TableCell>
+            <Avatar sx={{ width: 32, height: 32, bgcolor: getRoleColor(user.role) }}>
+              {user.name?.charAt(0)?.toUpperCase()}
+            </Avatar>
+          </TableCell>
+          <TableCell>
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight:600 }}>{user.name}</Typography>
+              <Typography variant="body2" sx={{ opacity:0.8 }}>@{user.username}</Typography>
+              <Typography variant="body2" sx={{ opacity:0.8, fontSize:'0.75rem' }}>{user.email}</Typography>
+            </Box>
+          </TableCell>
+          <TableCell>
+            <Chip 
+              label={formatRoleLabel(user.role)} 
+              size="small"
+              color={getRoleChipColor(user.role)}
+              variant="outlined"
+            />
+          </TableCell>
+          <TableCell>
+            <Typography variant="body2">
+              {user.created_at ? new Date(user.created_at).toLocaleDateString() : '-'}
+            </Typography>
+          </TableCell>
+          <TableCell align="right">
+            <Stack direction="row" spacing={1} justifyContent="flex-end">
+              <Tooltip title="Edit User">
+                <IconButton size="small" onClick={()=>onEditUser(user)}>
+                  <Edit/>
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Reset Password">
+                <IconButton size="small" onClick={()=>onPasswordReset(user)}>
+                  <VpnKey/>
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Delete User">
+                <IconButton 
+                  size="small" 
+                  color="error" 
+                  onClick={()=>onDeleteUser(user)}
+                  disabled={user.role === 'admin' && totalUsers.filter(u => u.role === 'admin').length <= 1}
+                >
+                  <Delete/>
+                </IconButton>
+              </Tooltip>
+            </Stack>
+          </TableCell>
+        </TableRow>
+      ))}
+      {users.length===0 && (
+        <TableRow>
+          <TableCell colSpan={5} align="center" sx={{ py:4, opacity:0.8 }}>
+            No users found matching your criteria
+          </TableCell>
+        </TableRow>
+      )}
+    </TableBody>
+  );
+});
 
 // =============================================
 // Utility Functions
