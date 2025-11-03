@@ -3,7 +3,7 @@ import {
   Container, Typography, Grid, Card, CardContent, Box, Chip, LinearProgress, Paper,
   IconButton, Button, Fade, Grow, useTheme, useMediaQuery, TextField, InputAdornment,
   Tabs, Tab, Stack, Dialog, DialogTitle, DialogContent, DialogActions, Snackbar, Alert,
-  Divider, MenuItem, Tooltip, Badge, Rating
+  Divider, MenuItem, Tooltip, Badge, Rating, Table, TableBody, TableCell, TableContainer, TableHead, TableRow
 } from '@mui/material';
 import {
   People, Assignment, TrendingUp, Refresh, Timeline, Star, LocalFireDepartment, Logout,
@@ -41,8 +41,9 @@ const CSRDashboard = () => {
   const [accepted, setAccepted] = useState([]);        // current CSR accepted
   const [completed, setCompleted] = useState([]);      // current CSR completed
   const [shortlist, setShortlist] = useState([]);      // current CSR shortlist
+  const [availableCategories, setAvailableCategories] = useState([]);  // all available categories
+  const [currentUser, setCurrentUser] = useState(null);  // logged-in user info
   
-
   // ---------- Filters ----------
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('all');
@@ -61,6 +62,10 @@ const CSRDashboard = () => {
   const [completeOpen, setCompleteOpen] = useState(false);
   const [completeReq, setCompleteReq] = useState(null);
   const [completionNote, setCompletionNote] = useState('');
+
+  // ---------- Users dialog ----------
+  const [usersDialogOpen, setUsersDialogOpen] = useState(false);
+  const [allUsers, setAllUsers] = useState([]);
 
   // ----------- Derived stats ----------
   const stats = useMemo(() => {
@@ -83,6 +88,7 @@ const CSRDashboard = () => {
       // Get logged-in CSR id
       const user = JSON.parse(localStorage.getItem('user') || 'null');
       const csrId = user?.users_id;
+      setCurrentUser(user);  // Store user info for display
 
       // Use absolute backend URLs to avoid dev-server proxy confusion
       const [
@@ -91,6 +97,7 @@ const CSRDashboard = () => {
         acceptedRes,
         completedRes,
         shortlistRes,
+        categoriesRes,
       ] = await Promise.all([
         axios.get('http://localhost:5000/api/help_requests/open').catch((e) => {
           console.error('Error fetching open requests:', e.response?.data || e.message);
@@ -110,6 +117,10 @@ const CSRDashboard = () => {
         }),
         (csrId ? axios.get(`http://localhost:5000/api/csr/shortlist/${csrId}`) : Promise.resolve({ data: [] })).catch((e) => {
           console.error('Error fetching shortlist:', e.response?.data || e.message);
+          return { data: [] };
+        }),
+        axios.get('http://localhost:5000/api/categories').catch((e) => {
+          console.error('Error fetching categories:', e.response?.data || e.message);
           return { data: [] };
         }),
       ]);
@@ -220,11 +231,22 @@ const CSRDashboard = () => {
         users: Array.isArray(usersRes?.data) ? usersRes.data.length : (usersRes?.data?.count ?? 0)
       });
 
+      // Process categories
+      const categoriesData = Array.isArray(categoriesRes?.data) ? categoriesRes.data : [];
+      setAvailableCategories(categoriesData.map(cat => cat.name));
+
       setRequests(requestsData);
       setAccepted(acceptedData);
       setCompleted(completedData);
       setShortlist(shortlistData);
       setUsersCount(Array.isArray(usersRes?.data) ? usersRes.data.length : (usersRes?.data?.count ?? 0));
+      
+      // Debug: Log category filtering
+      console.log('CSR Dashboard Debug:', {
+        categoriesFromAPI: categoriesData.map(cat => cat.name),
+        requestsCategories: requestsData.map(r => r.category).filter(Boolean),
+        totalRequests: requestsData.length
+      });
     } catch (e) {
       console.error('CSR Dashboard fetch error:', e);
       console.error('Error details:', e.response?.data || e.message);
@@ -260,16 +282,18 @@ const CSRDashboard = () => {
   };
 
   // ---------- Filtering logic for Open ----------
-  const categories = useMemo(() => {
-    const set = new Set();
-    requests.forEach(r => r.category && set.add(r.category));
-    return ['all', ...Array.from(set)];
-  }, [requests]);
+  const categories = ['all', ...availableCategories];
 
   const openFiltered = useMemo(() => {
-    return requests
+    const filtered = requests
       .filter(r => (r.status ?? 'open') === 'open')
-      .filter(r => (category === 'all' ? true : r.category === category))
+      .filter(r => {
+        if (category === 'all') return true;
+        // Handle both exact match and trim for safety
+        const requestCategory = (r.category || '').trim();
+        const selectedCategory = category.trim();
+        return requestCategory === selectedCategory;
+      })
       .filter(r => {
         if (!urgentOnly) return true;
         // Check if urgency is 'high' or if there's an urgent flag
@@ -281,10 +305,42 @@ const CSRDashboard = () => {
         const text = [r.title, r.description, r.category, r.location].join(' ').toLowerCase();
         return text.includes(q);
       });
-  }, [requests, category, urgentOnly, search]);
+    
+    // Debug logging
+    if (category !== 'all') {
+      const allOpenRequests = requests.filter(r => (r.status ?? 'open') === 'open');
+      const categoriesInRequests = [...new Set(allOpenRequests.map(r => r.category || 'null').filter(Boolean))];
+      console.log('Category Filter Debug:', {
+        selectedCategory: category,
+        availableCategories: availableCategories,
+        categoriesInRequests: categoriesInRequests,
+        totalOpenRequests: allOpenRequests.length,
+        filteredCount: filtered.length,
+        sampleRequests: allOpenRequests.slice(0, 5).map(r => ({
+          title: r.title,
+          category: r.category || 'null',
+          matches: (r.category || '').trim() === category.trim()
+        }))
+      });
+    }
+    
+    return filtered;
+  }, [requests, category, urgentOnly, search, availableCategories]);
 
   // ---------- Actions ----------
   const openDetails = (req) => { setDetailReq(req); setDetailOpen(true); };
+
+  const openUsersDialog = async () => {
+    try {
+      const response = await axios.get('http://localhost:5000/users');
+      const users = Array.isArray(response.data) ? response.data : [];
+      setAllUsers(users);
+      setUsersDialogOpen(true);
+    } catch (e) {
+      console.error(e);
+      setToast({ open: true, msg: 'Failed to fetch users', severity: 'error' });
+    }
+  };
 
   const acceptRequest = async (reqId) => {
     try {
@@ -377,14 +433,14 @@ const CSRDashboard = () => {
   }
 
   // ---------- Small UI helpers ----------
-  const StatCard = ({ title, value, icon, bg, shadow, delay }) => (
+  const StatCard = ({ title, value, icon, bg, shadow, delay, onClick }) => (
     <Grid item xs={12} sm={6} lg={3}>
       <Grow in timeout={800} style={{ transitionDelay: `${delay}ms` }}>
         <Card sx={{
           height: '100%', minHeight: { xs: 140, md: 160 }, backgroundColor: bg, color: '#fff',
-          position: 'relative', overflow: 'hidden', cursor: 'default',
+          position: 'relative', overflow: 'hidden', cursor: onClick ? 'pointer' : 'default',
           '&:hover': { transform: 'translateY(-6px)', boxShadow: `0 18px 36px ${shadow}` },
-        }}>
+        }} onClick={onClick}>
           <CardContent sx={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
               <Box>
@@ -456,6 +512,20 @@ const CSRDashboard = () => {
         {/* Header */}
         <Fade in timeout={800}>
           <Box sx={{ textAlign: 'center', mb: { xs: 3, md: 5 } }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', mb: 2 }}>
+              <Box sx={{
+                px: 3,
+                py: 1,
+                borderRadius: 2,
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                border: '1px solid rgba(255,255,255,0.2)',
+              }}>
+                <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
+                  {currentUser?.name || currentUser?.username || 'User'}
+                </Typography>
+              </Box>
+            </Box>
             <Typography variant={isMobile ? 'h4' : 'h2'} component="h1" sx={{
               fontWeight: 800,
               background: 'linear-gradient(45deg, #ffffff 30%, rgba(255,255,255,0.8) 90%)',
@@ -498,7 +568,7 @@ const CSRDashboard = () => {
         {/* Stats */}
         <Grid container spacing={{ xs: 2, md: 3 }} sx={{ mb: { xs: 3, md: 5 } }}>
           <StatCard title="Total Requests" value={stats.totalRequests} icon={<Assignment sx={{ fontSize: 40 }} />} bg="#667eea" shadow="rgba(102,126,234,0.4)" delay={100} />
-          <StatCard title="Total Users" value={stats.totalUsers} icon={<People sx={{ fontSize: 40 }} />} bg="#48bb78" shadow="rgba(72,187,120,0.4)" delay={200} />
+          <StatCard title="Total Users" value={stats.totalUsers} icon={<People sx={{ fontSize: 40 }} />} bg="#48bb78" shadow="rgba(72,187,120,0.4)" delay={200} onClick={openUsersDialog} />
           <StatCard title="Active Requests" value={stats.activeRequests} icon={<LocalFireDepartment sx={{ fontSize: 40 }} />} bg="#ed8936" shadow="rgba(237,137,54,0.4)" delay={300} />
           <StatCard title="Completion Rate" value={`${stats.completionRate}%`} icon={<TrendingUp sx={{ fontSize: 40 }} />} bg="#f56565" shadow="rgba(245,101,101,0.4)" delay={400} />
         </Grid>
@@ -530,7 +600,7 @@ const CSRDashboard = () => {
                     }}
                   />
                   <TextField select label="Category" value={category} onChange={(e) => setCategory(e.target.value)} sx={{ minWidth: 220 }}>
-                    {(['all', ...new Set(requests.map(r => r.category).filter(Boolean))]).map(c => (
+                    {categories.map(c => (
                       <MenuItem key={c} value={c}>{c === 'all' ? 'All categories' : c}</MenuItem>
                     ))}
                   </TextField>
@@ -909,6 +979,49 @@ const CSRDashboard = () => {
           >
             Complete
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Users dialog */}
+      <Dialog open={usersDialogOpen} onClose={() => setUsersDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800 }}>All Users ({allUsers.length})</DialogTitle>
+        <DialogContent dividers>
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell><strong>ID</strong></TableCell>
+                  <TableCell><strong>Name</strong></TableCell>
+                  <TableCell><strong>Email</strong></TableCell>
+                  <TableCell><strong>Role</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {allUsers.map(user => (
+                  <TableRow key={user.users_id} hover>
+                    <TableCell>{user.users_id}</TableCell>
+                    <TableCell>{user.name}</TableCell>
+                    <TableCell>{user.email}</TableCell>
+                    <TableCell>
+                      <Chip 
+                        label={user.role} 
+                        size="small"
+                        color={
+                          user.role === 'csr_rep' || user.role === 'CSR Rep' ? 'primary' :
+                          user.role === 'PIN' || user.role === 'pin' ? 'success' :
+                          user.role === 'platform_manager' || user.role === 'Platform Manager' ? 'warning' :
+                          user.role === 'admin' ? 'error' : 'default'
+                        }
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUsersDialogOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
 

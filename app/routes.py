@@ -5,6 +5,7 @@ from flask_cors import cross_origin
 from datetime import datetime, timedelta
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy import inspect, text, func, cast, Date
+from sqlalchemy.orm import joinedload
 
 main = Blueprint('main', __name__)
 
@@ -695,8 +696,8 @@ def get_help_requests_by_user(user_id):
 @cross_origin()
 def get_open_help_requests():
     try:
-        # Query all open help requests
-        open_requests = PinRequest.query.filter_by(status='open').all()
+        # Query all open help requests with eager loading of category
+        open_requests = PinRequest.query.options(joinedload(PinRequest.category_rel)).filter_by(status='open').all()
 
         data = []
         for req in open_requests:

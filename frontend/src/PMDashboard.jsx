@@ -38,6 +38,7 @@ export default function PMDashboard(){
   const [categories, setCategories] = useState([]);
   const [requests, setRequests] = useState([]);
   const [analytics, setAnalytics] = useState({ daily:{}, weekly:{}, monthly:{} });
+  const [currentUser, setCurrentUser] = useState(null);
 
   // Category filters/search
   const [catQuery, setCatQuery] = useState('');
@@ -54,6 +55,10 @@ export default function PMDashboard(){
 
   const fetchAll = async () => {
     try{
+      // Get logged-in user
+      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      setCurrentUser(user);  // Store user info for display
+      
       const [catRes, reqRes, anRes] = await Promise.all([
         api.get('/api/pm/categories'),
         api.get('/api/pm/requests'),
@@ -157,6 +162,20 @@ export default function PMDashboard(){
   return (
     <Container maxWidth="lg">
       <Box sx={{ mt:3, mb:3, textAlign:'center' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', mb: 2 }}>
+          <Box sx={{
+            px: 3,
+            py: 1,
+            borderRadius: 2,
+            background: 'linear-gradient(135deg, #ed8936 0%, #dd6b20 100%)',
+            boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+            border: '1px solid rgba(255,255,255,0.2)',
+          }}>
+            <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
+              {currentUser?.name || currentUser?.username || 'User'}
+            </Typography>
+          </Box>
+        </Box>
         <Typography variant="h3" sx={{ fontWeight:800, letterSpacing:0.2 }}>
           🛠️ Platform Manager Dashboard {USE_MOCKS && <Chip size="small" color="info" label="Mock Mode" sx={{ ml:1 }} />}
         </Typography>

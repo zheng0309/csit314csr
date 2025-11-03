@@ -35,7 +35,7 @@ class Category(db.Model):
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.String(255))
 
-    pin_requests = db.relationship('PinRequest', backref='category', lazy=True)
+    # Note: relationship defined on PinRequest with backref='requests'
 
     def __repr__(self):
         return f"<Category {self.name}>"
@@ -62,9 +62,15 @@ class PinRequest(db.Model):
     completed_at = db.Column(db.DateTime)
 
     # Relationships
+    category_rel = db.relationship('Category', backref='requests', lazy=True)
     shortlists = db.relationship('CSRShortlist', backref='request', lazy=True)
     matches = db.relationship('MatchHistory', backref='request', lazy=True)
     feedback = db.relationship('Feedback', backref='request', uselist=False, lazy=True)
+
+    @property
+    def category(self):
+        """Compatibility property for backref"""
+        return self.category_rel
 
     def __repr__(self):
         return f"<Request {self.title} ({self.status})>"
