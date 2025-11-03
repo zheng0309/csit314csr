@@ -13,7 +13,8 @@ def create_app():
     load_dotenv()
 
     app = Flask(__name__)
-    CORS(app)
+    # Single CORS configuration for the whole app (dev: Vite on 5173)
+    CORS(app, resources={r"/*": {"origins": ["http://localhost:5173"]}}, supports_credentials=True)
 
     #  PostgreSQL connection using .env values
     app.config['SQLALCHEMY_DATABASE_URI'] = (
@@ -26,8 +27,7 @@ def create_app():
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'supersecretkey')
 
-    #  Enable CORS for frontend
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    # Route-specific CORS no longer needed; covered by global CORS above
 
     #  Initialize the database
     init_db(app)

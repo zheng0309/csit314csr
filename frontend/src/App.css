@@ -110,10 +110,28 @@ input[type="password"],
 input[type="text"] {
   flex: 1;
   outline: none; border: none; background: transparent;
-  color: var(--text);
+  color: #000;
   font-size: 14px;
 }
-input::placeholder { color: #667085; }
+input::placeholder { color: #000; opacity: 0.6; }
+
+/* Force black text for MUI TextFields used in Admin dashboard */
+.MuiInputBase-input { color: #000 !important; background-color: #fff; }
+.MuiInputBase-input::placeholder { color: #000 !important; opacity: 0.6; }
+.MuiFormLabel-root { color: #000 !important; opacity: 0.8; }
+.MuiOutlinedInput-root .MuiOutlinedInput-notchedOutline { border-color: rgba(0,0,0,0.2); }
+.MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline { border-color: #000; }
+
+/* Login page (card) — ensure inputs are white for contrast on dark bg */
+.card input[type="email"],
+.card input[type="password"],
+.card input[type="text"] {
+  color: #fff;
+}
+.card input::placeholder {
+  color: #fff;
+  opacity: 0.75;
+}
 
 .ghost-btn {
   border: none; outline: none; background: transparent;

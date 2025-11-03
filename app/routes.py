@@ -95,6 +95,182 @@ def get_requests():
 
 
 # ---------------------------------
+# 👤 Admin: Users list and stats
+# ---------------------------------
+@main.route('/api/admin/users', methods=['GET'])
+@cross_origin()
+def admin_get_users():
+    try:
+        users = User.query.all()
+        # Normalize role labels to canonical values for frontend
+        role_map = {
+            "pin": "pin", "PIN": "pin",
+            "csr_rep": "csr_rep", "CSR Rep": "csr_rep", "CSR": "csr_rep",
+            "platform_manager": "platform_manager", "Platform Manager": "platform_manager", "PM": "platform_manager",
+            "admin": "admin", "Admin": "admin"
+        }
+        results = []
+        for u in users:
+            normalized_role = role_map.get(u.role, u.role)
+            results.append({
+                "users_id": u.users_id,
+                "name": u.name,
+                "role": normalized_role,
+                "email": u.email,
+                "created_at": getattr(u, 'created_at', None)
+            })
+        return jsonify(results), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to fetch users: {str(e)}"}), 500
+
+
+@main.route('/api/admin/user-stats', methods=['GET'])
+@cross_origin()
+def admin_user_stats():
+    try:
+        # Count by roles with normalization handled via SQL OR Python fallback
+        # Simple approach: fetch counts by raw values that might exist
+        total_all = User.query.count()
+        count_admin = User.query.filter(func.lower(User.role).in_(['admin'])).count()
+        count_pin = User.query.filter(func.lower(User.role).in_(['pin'])).count()
+        count_csr = User.query.filter(func.lower(User.role).in_(['csr_rep', 'csr', 'csr rep'])).count()
+        count_pm = User.query.filter(func.lower(User.role).in_(['platform_manager', 'platform manager', 'pm'])).count()
+
+        return jsonify({
+            "total": total_all,
+            "total_excluding_admin": total_all - count_admin,
+            "pin": count_pin,
+            "csr_rep": count_csr,
+            "platform_manager": count_pm,
+            "admin": count_admin
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to fetch user stats: {str(e)}"}), 500
+
+# ---------------------------------
+@main.route('/api/admin/users', methods=['POST'])
+@cross_origin(origins=["http://localhost:5173"], supports_credentials=True)
+def admin_create_user():
+    try:
+        data = request.get_json() or {}
+        required = ['name', 'email', 'role', 'password']
+        if any(not data.get(k) for k in required):
+            return jsonify({"error": "name, email, role, password are required"}), 400
+
+        # Normalize role
+        role_map = {
+            "pin": "pin", "PIN": "pin",
+            "csr_rep": "csr_rep", "CSR Rep": "csr_rep", "CSR": "csr_rep",
+            "platform_manager": "platform_manager", "Platform Manager": "platform_manager", "PM": "platform_manager",
+            "admin": "admin", "Admin": "admin"
+        }
+        normalized_role = role_map.get(data.get('role'), data.get('role'))
+
+        # Check email unique
+        exists = User.query.filter((User.email == data['email'])).first()
+        if exists:
+            return jsonify({"error": "User with same email already exists"}), 409
+
+        # Generate username automatically based on next users_id
+        next_id = (db.session.query(func.max(User.users_id)).scalar() or 0) + 1
+        generated_username = str(next_id)
+
+        user = User(
+            username=generated_username,
+            name=data['name'],
+            email=data['email'],
+            role=normalized_role,
+            password=data['password']
+        )
+        db.session.add(user)
+        db.session.commit()
+
+        return jsonify({
+            "users_id": user.users_id,
+            "username": user.username,
+            "name": user.name,
+            "email": user.email,
+            "role": user.role
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to create user: {str(e)}"}), 500
+
+
+@main.route('/api/admin/users/<int:user_id>', methods=['PATCH'])
+@cross_origin(origins=["http://localhost:5173"], supports_credentials=True)
+def admin_update_user(user_id):
+    try:
+        data = request.get_json() or {}
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        # Username is auto-generated; ignore changes to username
+        if 'name' in data and data['name']:
+            user.name = data['name']
+        if 'email' in data and data['email']:
+            user.email = data['email']
+        if 'role' in data and data['role']:
+            role_map = {
+                "pin": "pin", "PIN": "pin",
+                "csr_rep": "csr_rep", "CSR Rep": "csr_rep", "CSR": "csr_rep",
+                "platform_manager": "platform_manager", "Platform Manager": "platform_manager", "PM": "platform_manager",
+                "admin": "admin", "Admin": "admin"
+            }
+            user.role = role_map.get(data['role'], data['role'])
+        if 'password' in data and data['password']:
+            user.password = data['password']
+
+        db.session.commit()
+        return jsonify({"message": "updated"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to update user: {str(e)}"}), 500
+
+
+@main.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
+@cross_origin(origins=["http://localhost:5173"], supports_credentials=True)
+def admin_delete_user(user_id):
+    try:
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        db.session.delete(user)
+        db.session.commit()
+        return jsonify({"message": "deleted"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to delete user: {str(e)}"}), 500
+
+
+@main.route('/api/admin/users/<int:user_id>/reset-password', methods=['POST'])
+@cross_origin(origins=["http://localhost:5173"], supports_credentials=True)
+def admin_reset_password(user_id):
+    try:
+        data = request.get_json() or {}
+        new_password = data.get('newPassword') or data.get('password')
+        if not new_password:
+            return jsonify({"error": "newPassword is required"}), 400
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        user.password = new_password
+        db.session.commit()
+        return jsonify({"message": "password reset"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to reset password: {str(e)}"}), 500
+
+
+# Alias endpoint to avoid method conflicts in some environments
+@main.route('/api/admin/users/create', methods=['POST'])
+@cross_origin(origins=["http://localhost:5173"], supports_credentials=True)
+def admin_create_user_alias():
+    return admin_create_user()
+
 # 🔎 Get Single Request By ID
 # ---------------------------------
 @main.route('/api/requests/<int:req_id>', methods=['GET'])

@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, memo } from 'react';
+import axios from 'axios';
 import {
   Container, Box, Typography, Button, IconButton, Stack, Tabs, Tab, Paper, Divider,
   TextField, InputAdornment, Dialog, DialogTitle, DialogContent, DialogActions,
@@ -11,32 +12,28 @@ import {
   Visibility, VisibilityOff, VpnKey, Email, Person, Download, FilterList,
   Security, Block, CheckCircle, Cancel, ContentCopy
 } from '@mui/icons-material';
-import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
-// Mock mode flag - set to true for development/testing
-const USE_MOCKS = false;
-
 // =============================================
-// AdminDashboard Component
+// AdminDashboard Component (Corrected to match DB schema)
 // =============================================
 export default function AdminDashboard(){
+  const API_BASE = import.meta?.env?.VITE_API_BASE || 'http://localhost:5000';
+  const USE_MOCKS = false;
+  const axiosClient = useMemo(()=> axios.create({ baseURL: API_BASE, withCredentials: false }), [API_BASE]);
   const navigate = useNavigate();
-  const [tab, setTab] = useState(0); // 0 Users, 1 Activity, 2 System
+  const [tab, setTab] = useState(0); // 0 Users, 1 Activity
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState({ open:false, msg:'', severity:'success' });
 
   // Data
   const [users, setUsers] = useState([]);
-  const [systemStats, setSystemStats] = useState({});
   const [activityLogs, setActivityLogs] = useState([]);
 
   // Filters and search
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [dateFilter, setDateFilter] = useState('all');
 
   // User dialog state
   const [userDialogOpen, setUserDialogOpen] = useState(false);
@@ -45,9 +42,7 @@ export default function AdminDashboard(){
     name: '',
     email: '',
     role: 'pin',
-    active: true,
-    phone: '',
-    department: ''
+    password: '' // Only for new users
   });
 
   // Password reset dialog
@@ -63,20 +58,31 @@ export default function AdminDashboard(){
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState(null);
 
+  const normalizeRole = (role)=>{
+    const map = {
+      'pin':'pin', 'PIN':'pin',
+      'csr_rep':'csr_rep', 'CSR Rep':'csr_rep', 'CSR':'csr_rep',
+      'platform_manager':'platform_manager', 'Platform Manager':'platform_manager', 'PM':'platform_manager',
+      'admin':'admin', 'Admin':'admin'
+    };
+    return map[role] || role || 'pin';
+  };
+
   const fetchAdminData = async () => {
     try{
-      const [usersRes, statsRes, logsRes] = await Promise.all([
-        axios.get('http://localhost:5000/api/admin/users'),
-        axios.get('http://localhost:5000/api/admin/stats'),
-        axios.get('http://localhost:5000/api/admin/activity-logs'),
+      const [usersRes, statsRes] = await Promise.all([
+        axiosClient.get(`/api/admin/users`),
+        axiosClient.get(`/api/admin/user-stats`)
       ]);
-      setUsers(Array.isArray(usersRes.data) ? usersRes.data : (usersRes.data?.items||[]));
-      setSystemStats(statsRes.data || {});
-      setActivityLogs(Array.isArray(logsRes.data) ? logsRes.data : (logsRes.data?.items||[]));
+      const incoming = Array.isArray(usersRes.data) ? usersRes.data : (usersRes.data?.items || usersRes.data?.users || []);
+      const normalized = incoming.map(u => ({ ...u, role: normalizeRole(u.role) }));
+      setUsers(normalized);
+      setActivityLogs([]);
       if (USE_MOCKS) setToast({ open:true, msg:'Admin Mock mode — using sample data', severity:'info' });
     }catch(e){
       console.error(e);
-      setToast({ open:true, msg:'Failed to fetch admin data', severity:'error' });
+      const msg = e?.response?.data?.error || `Failed to fetch admin data${e?.response?.status? ` (${e.response.status})`:''}`;
+      setToast({ open:true, msg: msg, severity:'error' });
     }finally{ setLoading(false); }
   };
 
@@ -91,35 +97,31 @@ export default function AdminDashboard(){
   const handleLogout = ()=>{
     localStorage.removeItem('adminToken');
     sessionStorage.clear();
-    navigate('/admin-login', { replace:true });
+    navigate('/', { replace:true });
   };
 
   // ===== User Management Operations =====
-  const openCreateUser = ()=>{
+  const openCreateUser = useCallback(()=>{
     setEditingUser(null);
     setUserForm({
       name: '',
       email: '',
       role: 'pin',
-      active: true,
-      phone: '',
-      department: ''
+      password: ''
     });
     setUserDialogOpen(true);
-  };
+  }, []);
 
-  const openEditUser = (user)=>{
+  const openEditUser = useCallback((user)=>{
     setEditingUser(user);
     setUserForm({
       name: user.name,
       email: user.email,
       role: user.role,
-      active: user.active,
-      phone: user.phone || '',
-      department: user.department || ''
+      password: '' // Don't show existing password
     });
     setUserDialogOpen(true);
-  };
+  }, []);
 
   const saveUser = async ()=>{
     try{
@@ -128,11 +130,23 @@ export default function AdminDashboard(){
         return;
       }
 
+      // For new users, password is required
+      if (!editingUser && !userForm.password.trim()) {
+        setToast({ open:true, msg:'Password is required for new users', severity:'warning' });
+        return;
+      }
+
       if (editingUser){
-        await axios.patch(`http://localhost:5000/api/admin/users/${editingUser.id}`, userForm);
+        // Update user - exclude password if not changed
+        const updateData = { ...userForm };
+        if (!updateData.password) {
+          delete updateData.password;
+        }
+        await axiosClient.patch(`/api/admin/users/${editingUser.users_id}`, updateData);
         setToast({ open:true, msg:'User updated successfully', severity:'success' });
       } else {
-        await axios.post('http://localhost:5000/api/admin/users', userForm);
+        // Create new user
+        await axiosClient.post(`/api/admin/users/create`, userForm);
         setToast({ open:true, msg:'User created successfully', severity:'success' });
       }
       setUserDialogOpen(false);
@@ -143,18 +157,7 @@ export default function AdminDashboard(){
     }
   };
 
-  const toggleUserStatus = async (user)=>{
-    try{
-      await axios.patch(`http://localhost:5000/api/admin/users/${user.id}`, { active: !user.active });
-      setToast({ open:true, msg:`User ${!user.active ? 'activated' : 'deactivated'}`, severity:'info' });
-      await fetchAdminData();
-    }catch(e){
-      console.error(e);
-      setToast({ open:true, msg:'Failed to update user status', severity:'error' });
-    }
-  };
-
-  const openPasswordReset = (user)=>{
+  const openPasswordReset = useCallback((user)=>{
     setSelectedUser(user);
     setPasswordForm({
       newPassword: generateTempPassword(),
@@ -162,7 +165,7 @@ export default function AdminDashboard(){
       forceReset: true
     });
     setPasswordDialogOpen(true);
-  };
+  }, []);
 
   const resetPassword = async ()=>{
     try{
@@ -171,7 +174,7 @@ export default function AdminDashboard(){
         return;
       }
 
-      await axios.post(`http://localhost:5000/api/admin/users/${selectedUser.id}/reset-password`, {
+      await axiosClient.post(`/api/admin/users/${selectedUser.users_id}/reset-password`, {
         newPassword: passwordForm.newPassword,
         forceReset: passwordForm.forceReset
       });
@@ -184,14 +187,14 @@ export default function AdminDashboard(){
     }
   };
 
-  const confirmDeleteUser = (user)=>{
+  const confirmDeleteUser = useCallback((user)=>{
     setUserToDelete(user);
     setDeleteDialogOpen(true);
-  };
+  }, []);
 
   const deleteUser = async ()=>{
     try{
-      await axios.delete(`http://localhost:5000/api/admin/users/${userToDelete.id}`);
+      await axiosClient.delete(`/api/admin/users/${userToDelete.users_id}`);
       setToast({ open:true, msg:'User deleted successfully', severity:'info' });
       setDeleteDialogOpen(false);
       await fetchAdminData();
@@ -218,14 +221,14 @@ export default function AdminDashboard(){
 
   const exportUsers = ()=>{
     const csvContent = [
-      ['Name', 'Email', 'Role', 'Status', 'Last Login', 'Created At'],
+      ['User ID', 'Username', 'Name', 'Email', 'Role', 'Created At'],
       ...filteredUsers.map(user => [
+        user.users_id,
+        user.username,
         user.name,
         user.email,
-        user.role.toUpperCase(),
-        user.active ? 'Active' : 'Inactive',
-        user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'Never',
-        new Date(user.createdAt).toLocaleDateString()
+        user.role,
+        new Date(user.created_at).toLocaleDateString()
       ])
     ].map(row => row.join(',')).join('\n');
 
@@ -248,7 +251,8 @@ export default function AdminDashboard(){
     if (searchQuery.trim()){
       const q = searchQuery.toLowerCase();
       list = list.filter(u => 
-        u.name.toLowerCase().includes(q) || 
+        u.username.toLowerCase().includes(q) || 
+        u.name.toLowerCase().includes(q) ||
         u.email.toLowerCase().includes(q) ||
         u.role.toLowerCase().includes(q)
       );
@@ -256,25 +260,8 @@ export default function AdminDashboard(){
     if (roleFilter !== 'all'){
       list = list.filter(u => u.role === roleFilter);
     }
-    if (statusFilter !== 'all'){
-      list = list.filter(u => u.active === (statusFilter === 'active'));
-    }
     return list;
-  }, [users, searchQuery, roleFilter, statusFilter]);
-
-  const filteredLogs = useMemo(()=>{
-    let list = activityLogs;
-    if (dateFilter !== 'all'){
-      const now = new Date();
-      const filterDate = new Date();
-      if (dateFilter === 'today') filterDate.setDate(now.getDate() - 1);
-      else if (dateFilter === 'week') filterDate.setDate(now.getDate() - 7);
-      else if (dateFilter === 'month') filterDate.setMonth(now.getMonth() - 1);
-      
-      list = list.filter(log => new Date(log.timestamp) >= filterDate);
-    }
-    return list;
-  }, [activityLogs, dateFilter]);
+  }, [users, searchQuery, roleFilter]);
 
   // ===== Loading state =====
   if (loading){
@@ -301,8 +288,8 @@ export default function AdminDashboard(){
         <Typography variant="subtitle1" sx={{ opacity:0.9, mt:0.5 }}>Manage user accounts and system access</Typography>
         <Stack direction="row" justifyContent="center" spacing={2} sx={{ mt:2 }}>
           <Tooltip title="Refresh">
-            <IconButton onClick={handleRefresh} disabled={refreshing} sx={{ border:'1px solid rgba(255,255,255,0.2)' }}>
-              <Refresh/>
+            <IconButton onClick={handleRefresh} disabled={refreshing} sx={{ border:'1px solid rgba(255,255,255,0.2)', color:'#fff' }}>
+              <Refresh sx={{ color:'#fff' }}/>
             </IconButton>
           </Tooltip>
           <Button variant="contained" color="primary" startIcon={<Add/>} onClick={openCreateUser}>
@@ -322,35 +309,31 @@ export default function AdminDashboard(){
         <Grid item xs={12} sm={6} md={3}>
           <StatCard 
             label="Total Users" 
-            value={systemStats.totalUsers || users.length} 
+            value={users.length} 
             color="#6366f1"
             icon={<Person/>}
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <StatCard 
-            label="Active Users" 
-            value={systemStats.activeUsers || users.filter(u => u.active).length} 
+            label="PIN Users" 
+            value={users.filter(u => u.role === 'pin').length} 
             color="#10b981"
-            icon={<CheckCircle/>}
+            icon={<Person/>}
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <StatCard 
-            label="New This Month" 
-            value={systemStats.newThisMonth || users.filter(u => {
-              const monthAgo = new Date();
-              monthAgo.setMonth(monthAgo.getMonth() - 1);
-              return new Date(u.createdAt) > monthAgo;
-            }).length} 
+            label="CSR Representative" 
+            value={users.filter(u => u.role === 'csr_rep').length} 
             color="#f59e0b"
-            icon={<Add/>}
+            icon={<Person/>}
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <StatCard 
-            label="Admin Users" 
-            value={systemStats.adminUsers || users.filter(u => u.role === 'admin').length} 
+            label="Platform Managers" 
+            value={users.filter(u => u.role === 'platform_manager').length} 
             color="#ef4444"
             icon={<Security/>}
           />
@@ -361,7 +344,6 @@ export default function AdminDashboard(){
         <Tabs value={tab} onChange={(_,v)=>setTab(v)} variant="scrollable" scrollButtons="auto">
           <Tab label={<Stack direction="row" alignItems="center" spacing={1}><Person fontSize="small"/> <span>User Management</span> <Badge badgeContent={users.length} color="primary" sx={{ ml:1 }}/></Stack>} />
           <Tab label={<Stack direction="row" alignItems="center" spacing={1}><FilterList fontSize="small"/> <span>Activity Logs</span></Stack>} />
-          <Tab label={<Stack direction="row" alignItems="center" spacing={1}><Security fontSize="small"/> <span>System Overview</span></Stack>} />
         </Tabs>
         <Divider/>
 
@@ -371,7 +353,7 @@ export default function AdminDashboard(){
             <Stack direction={{ xs:'column', md:'row' }} spacing={2} sx={{ mb:2 }}>
               <TextField 
                 fullWidth 
-                placeholder="Search users by name, email, or role" 
+                placeholder="Search users by username, name, email, or role" 
                 value={searchQuery} 
                 onChange={(e)=>setSearchQuery(e.target.value)} 
                 InputProps={{ startAdornment:(<InputAdornment position="start"><Search/></InputAdornment>) }} 
@@ -381,24 +363,13 @@ export default function AdminDashboard(){
                 label="Role" 
                 value={roleFilter} 
                 onChange={(e)=>setRoleFilter(e.target.value)} 
-                sx={{ minWidth:150 }}
+                sx={{ minWidth:200 }}
               >
                 <MenuItem value="all">All Roles</MenuItem>
                 <MenuItem value="pin">PIN</MenuItem>
-                <MenuItem value="csr">CSR</MenuItem>
-                <MenuItem value="pm">Platform Manager</MenuItem>
-                <MenuItem value="admin">Admin</MenuItem>
-              </TextField>
-              <TextField 
-                select 
-                label="Status" 
-                value={statusFilter} 
-                onChange={(e)=>setStatusFilter(e.target.value)} 
-                sx={{ minWidth:150 }}
-              >
-                <MenuItem value="all">All Status</MenuItem>
-                <MenuItem value="active">Active</MenuItem>
-                <MenuItem value="inactive">Inactive</MenuItem>
+                <MenuItem value="csr_rep">CSR Representative</MenuItem>
+                <MenuItem value="platform_manager">Platform Manager</MenuItem>
+                <MenuItem value="admin">Administrator</MenuItem>
               </TextField>
             </Stack>
 
@@ -407,105 +378,19 @@ export default function AdminDashboard(){
                 <TableHead>
                   <TableRow>
                     <TableCell width={60}>Avatar</TableCell>
-                    <TableCell>User</TableCell>
+                    <TableCell>User Details</TableCell>
                     <TableCell>Role</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell>Last Login</TableCell>
                     <TableCell>Created</TableCell>
                     <TableCell align="right">Actions</TableCell>
                   </TableRow>
                 </TableHead>
-                <TableBody>
-                  {filteredUsers.map(user=> (
-                    <TableRow key={user.id} hover sx={{ opacity: user.active ? 1 : 0.7 }}>
-                      <TableCell>
-                        <Avatar sx={{ width: 32, height: 32, bgcolor: getRoleColor(user.role) }}>
-                          {user.name.charAt(0).toUpperCase()}
-                        </Avatar>
-                      </TableCell>
-                      <TableCell>
-                        <Box>
-                          <Typography variant="subtitle2" sx={{ fontWeight:600 }}>{user.name}</Typography>
-                          <Typography variant="body2" sx={{ opacity:0.8 }}>{user.email}</Typography>
-                          {user.phone && <Typography variant="body2" sx={{ opacity:0.7, fontSize:'0.75rem' }}>{user.phone}</Typography>}
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Chip 
-                          label={user.role.toUpperCase()} 
-                          size="small"
-                          color={getRoleChipColor(user.role)}
-                          variant="outlined"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Stack direction="row" alignItems="center" spacing={1}>
-                          {user.active ? (
-                            <CheckCircle fontSize="small" color="success" />
-                          ) : (
-                            <Cancel fontSize="small" color="error" />
-                          )}
-                          <Chip 
-                            label={user.active ? 'Active' : 'Inactive'} 
-                            size="small"
-                            color={user.active ? 'success' : 'default'}
-                            variant={user.active ? 'filled' : 'outlined'}
-                          />
-                        </Stack>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2">
-                          {user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'Never'}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2">
-                          {new Date(user.createdAt).toLocaleDateString()}
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="right">
-                        <Stack direction="row" spacing={1} justifyContent="flex-end">
-                          <Tooltip title="Edit User">
-                            <IconButton size="small" onClick={()=>openEditUser(user)}>
-                              <Edit/>
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Reset Password">
-                            <IconButton size="small" onClick={()=>openPasswordReset(user)}>
-                              <VpnKey/>
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title={user.active ? 'Deactivate' : 'Activate'}>
-                            <IconButton 
-                              size="small" 
-                              color={user.active ? 'warning' : 'success'}
-                              onClick={()=>toggleUserStatus(user)}
-                            >
-                              {user.active ? <Block/> : <CheckCircle/>}
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Delete User">
-                            <IconButton 
-                              size="small" 
-                              color="error" 
-                              onClick={()=>confirmDeleteUser(user)}
-                              disabled={user.role === 'admin' && users.filter(u => u.role === 'admin').length <= 1}
-                            >
-                              <Delete/>
-                            </IconButton>
-                          </Tooltip>
-                        </Stack>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {filteredUsers.length===0 && (
-                    <TableRow>
-                      <TableCell colSpan={7} align="center" sx={{ py:4, opacity:0.8 }}>
-                        No users found matching your criteria
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
+                <UsersTable 
+                  users={filteredUsers}
+                  totalUsers={users}
+                  onEditUser={openEditUser}
+                  onPasswordReset={openPasswordReset}
+                  onDeleteUser={confirmDeleteUser}
+                />
               </Table>
             </TableContainer>
           </Box>
@@ -514,21 +399,7 @@ export default function AdminDashboard(){
         {/* ACTIVITY LOGS TAB */}
         {tab===1 && (
           <Box sx={{ p:2.5 }}>
-            <Stack direction={{ xs:'column', md:'row' }} spacing={2} sx={{ mb:2 }}>
-              <TextField 
-                select 
-                label="Time Period" 
-                value={dateFilter} 
-                onChange={(e)=>setDateFilter(e.target.value)} 
-                sx={{ minWidth:200 }}
-              >
-                <MenuItem value="all">All Time</MenuItem>
-                <MenuItem value="today">Today</MenuItem>
-                <MenuItem value="week">Past Week</MenuItem>
-                <MenuItem value="month">Past Month</MenuItem>
-              </TextField>
-            </Stack>
-
+            <Typography variant="h6" sx={{ mb:2 }}>Recent System Activity</Typography>
             <TableContainer component={Paper} variant="outlined" sx={{ borderRadius:2, maxHeight:400 }}>
               <Table size="small" stickyHeader>
                 <TableHead>
@@ -537,11 +408,10 @@ export default function AdminDashboard(){
                     <TableCell>User</TableCell>
                     <TableCell>Action</TableCell>
                     <TableCell>Details</TableCell>
-                    <TableCell>IP Address</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {filteredLogs.map((log, index)=> (
+                  {activityLogs.slice(0, 50).map((log, index)=> (
                     <TableRow key={index} hover>
                       <TableCell>
                         <Typography variant="body2">
@@ -556,7 +426,7 @@ export default function AdminDashboard(){
                           <Box>
                             <Typography variant="body2" sx={{ fontWeight:600 }}>{log.userName}</Typography>
                             <Typography variant="body2" sx={{ opacity:0.7, fontSize:'0.75rem' }}>
-                              {log.userRole}
+                              @{log.userUsername}
                             </Typography>
                           </Box>
                         </Stack>
@@ -572,16 +442,11 @@ export default function AdminDashboard(){
                       <TableCell>
                         <Typography variant="body2">{log.details}</Typography>
                       </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" sx={{ fontFamily:'monospace', opacity:0.7 }}>
-                          {log.ipAddress}
-                        </Typography>
-                      </TableCell>
                     </TableRow>
                   ))}
-                  {filteredLogs.length===0 && (
+                  {activityLogs.length===0 && (
                     <TableRow>
-                      <TableCell colSpan={5} align="center" sx={{ py:4, opacity:0.8 }}>
+                      <TableCell colSpan={4} align="center" sx={{ py:4, opacity:0.8 }}>
                         No activity logs found
                       </TableCell>
                     </TableRow>
@@ -589,60 +454,6 @@ export default function AdminDashboard(){
                 </TableBody>
               </Table>
             </TableContainer>
-          </Box>
-        )}
-
-        {/* SYSTEM OVERVIEW TAB */}
-        {tab===2 && (
-          <Box sx={{ p:2.5 }}>
-            <Typography variant="h6" sx={{ mb:2 }}>System Configuration</Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
-                <Card variant="outlined">
-                  <CardContent>
-                    <Typography variant="h6" sx={{ mb:2 }}>User Roles Distribution</Typography>
-                    <Stack spacing={1}>
-                      {['pin', 'csr', 'pm', 'admin'].map(role => {
-                        const count = users.filter(u => u.role === role).length;
-                        const percentage = users.length > 0 ? (count / users.length * 100).toFixed(1) : 0;
-                        return (
-                          <Box key={role} sx={{ display:'flex', justifyContent:'space-between', alignItems:'center', py:0.5 }}>
-                            <Stack direction="row" alignItems="center" spacing={1}>
-                              <Box sx={{ width:12, height:12, borderRadius:'50%', bgcolor:getRoleColor(role) }}/>
-                              <Typography variant="body2" sx={{ textTransform:'capitalize' }}>{role}</Typography>
-                            </Stack>
-                            <Typography variant="body2" sx={{ fontWeight:600 }}>
-                              {count} ({percentage}%)
-                            </Typography>
-                          </Box>
-                        );
-                      })}
-                    </Stack>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Card variant="outlined">
-                  <CardContent>
-                    <Typography variant="h6" sx={{ mb:2 }}>Quick Actions</Typography>
-                    <Stack spacing={1}>
-                      <Button variant="outlined" startIcon={<Download/>} onClick={exportUsers} fullWidth>
-                        Export All Users
-                      </Button>
-                      <Button variant="outlined" startIcon={<VpnKey/>} fullWidth>
-                        Bulk Password Reset
-                      </Button>
-                      <Button variant="outlined" startIcon={<Email/>} fullWidth>
-                        Send System Announcement
-                      </Button>
-                      <Button variant="outlined" startIcon={<Security/>} fullWidth>
-                        Security Settings
-                      </Button>
-                    </Stack>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
           </Box>
         )}
       </Paper>
@@ -654,11 +465,11 @@ export default function AdminDashboard(){
         </DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2} sx={{ mt:0.5 }}>
+            {/* Username is auto-generated on the backend; no manual input */}
             <TextField 
               label="Full Name" 
               value={userForm.name} 
               onChange={e=>setUserForm(f=>({ ...f, name:e.target.value }))} 
-              autoFocus 
               required
             />
             <TextField 
@@ -676,35 +487,18 @@ export default function AdminDashboard(){
               required
             >
               <MenuItem value="pin">Person-In-Need (PIN)</MenuItem>
-              <MenuItem value="csr">Community Service Rep (CSR)</MenuItem>
-              <MenuItem value="pm">Platform Manager</MenuItem>
+              <MenuItem value="csr_rep">Community Service Rep (CSR)</MenuItem>
+              <MenuItem value="platform_manager">Platform Manager</MenuItem>
               <MenuItem value="admin">Administrator</MenuItem>
             </TextField>
-            <Stack direction={{ xs:'column', sm:'row' }} spacing={2}>
-              <TextField 
-                label="Phone" 
-                value={userForm.phone} 
-                onChange={e=>setUserForm(f=>({ ...f, phone:e.target.value }))} 
-                fullWidth
-              />
-              <TextField 
-                label="Department" 
-                value={userForm.department} 
-                onChange={e=>setUserForm(f=>({ ...f, department:e.target.value }))} 
-                fullWidth
-              />
-            </Stack>
-            <FormGroup>
-              <FormControlLabel 
-                control={
-                  <Switch 
-                    checked={userForm.active} 
-                    onChange={e=>setUserForm(f=>({ ...f, active:e.target.checked }))} 
-                  />
-                } 
-                label="Active Account" 
-              />
-            </FormGroup>
+            <TextField 
+              label={editingUser ? "New Password (leave blank to keep current)" : "Password"} 
+              type="password"
+              value={userForm.password} 
+              onChange={e=>setUserForm(f=>({ ...f, password:e.target.value }))} 
+              required={!editingUser}
+              helperText={editingUser ? "Only enter if you want to change the password" : "Password for initial login"}
+            />
           </Stack>
         </DialogContent>
         <DialogActions>
@@ -721,7 +515,7 @@ export default function AdminDashboard(){
         <DialogContent dividers>
           <Stack spacing={2} sx={{ mt:0.5 }}>
             <Typography variant="h6">{selectedUser?.name}</Typography>
-            <Typography variant="body2" sx={{ opacity:0.8 }}>{selectedUser?.email}</Typography>
+            <Typography variant="body2" sx={{ opacity:0.8 }}>@{selectedUser?.username} • {selectedUser?.email}</Typography>
             
             <TextField 
               label="New Password" 
@@ -778,7 +572,7 @@ export default function AdminDashboard(){
         <DialogContent dividers>
           <Stack spacing={2} sx={{ mt:0.5 }}>
             <Typography variant="h6">Delete User: {userToDelete?.name}</Typography>
-            <Typography variant="body2" sx={{ opacity:0.8 }}>{userToDelete?.email}</Typography>
+            <Typography variant="body2" sx={{ opacity:0.8 }}>@{userToDelete?.username} • {userToDelete?.email}</Typography>
             <Alert severity="warning">
               This action cannot be undone. All user data and associated records will be permanently deleted.
             </Alert>
@@ -830,13 +624,83 @@ function StatCard({ label, value, color, icon }){
 }
 
 // =============================================
+// Memoized Users Table (prevents re-render on dialog typing)
+// =============================================
+const UsersTable = memo(function UsersTable({ users, totalUsers, onEditUser, onPasswordReset, onDeleteUser }){
+  return (
+    <TableBody>
+      {users.map(user=> (
+        <TableRow key={user.users_id} hover>
+          <TableCell>
+            <Avatar sx={{ width: 32, height: 32, bgcolor: getRoleColor(user.role) }}>
+              {user.name?.charAt(0)?.toUpperCase()}
+            </Avatar>
+          </TableCell>
+          <TableCell>
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight:600 }}>{user.name}</Typography>
+              <Typography variant="body2" sx={{ opacity:0.8 }}>@{user.username}</Typography>
+              <Typography variant="body2" sx={{ opacity:0.8, fontSize:'0.75rem' }}>{user.email}</Typography>
+            </Box>
+          </TableCell>
+          <TableCell>
+            <Chip 
+              label={formatRoleLabel(user.role)} 
+              size="small"
+              color={getRoleChipColor(user.role)}
+              variant="outlined"
+            />
+          </TableCell>
+          <TableCell>
+            <Typography variant="body2">
+              {user.created_at ? new Date(user.created_at).toLocaleDateString() : '-'}
+            </Typography>
+          </TableCell>
+          <TableCell align="right">
+            <Stack direction="row" spacing={1} justifyContent="flex-end">
+              <Tooltip title="Edit User">
+                <IconButton size="small" onClick={()=>onEditUser(user)}>
+                  <Edit/>
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Reset Password">
+                <IconButton size="small" onClick={()=>onPasswordReset(user)}>
+                  <VpnKey/>
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Delete User">
+                <IconButton 
+                  size="small" 
+                  color="error" 
+                  onClick={()=>onDeleteUser(user)}
+                  disabled={user.role === 'admin' && totalUsers.filter(u => u.role === 'admin').length <= 1}
+                >
+                  <Delete/>
+                </IconButton>
+              </Tooltip>
+            </Stack>
+          </TableCell>
+        </TableRow>
+      ))}
+      {users.length===0 && (
+        <TableRow>
+          <TableCell colSpan={5} align="center" sx={{ py:4, opacity:0.8 }}>
+            No users found matching your criteria
+          </TableCell>
+        </TableRow>
+      )}
+    </TableBody>
+  );
+});
+
+// =============================================
 // Utility Functions
 // =============================================
 function getRoleColor(role){
   const colors = {
     pin: '#6366f1',
-    csr: '#10b981', 
-    pm: '#f59e0b',
+    csr_rep: '#10b981', 
+    platform_manager: '#f59e0b',
     admin: '#ef4444'
   };
   return colors[role] || '#6b7280';
@@ -845,11 +709,21 @@ function getRoleColor(role){
 function getRoleChipColor(role){
   const colors = {
     pin: 'primary',
-    csr: 'success',
-    pm: 'warning', 
+    csr_rep: 'success',
+    platform_manager: 'warning', 
     admin: 'error'
   };
   return colors[role] || 'default';
+}
+
+function formatRoleLabel(role){
+  const labels = {
+    pin: 'PIN',
+    csr_rep: 'CSR',
+    platform_manager: 'Platform Manager',
+    admin: 'Admin'
+  };
+  return labels[role] || role;
 }
 
 function getActionColor(action){

@@ -8,8 +8,8 @@ import {
 } from '@mui/material';
 import {
   Logout, Refresh, Search, Add, Edit, Delete, Save, Close as CloseIcon,
-  ContentCopy, Visibility, Favorite, Phone, Email, Print, CheckCircle,
-  Cancel, Warning, History, Feedback, FilterList, Schedule
+  Visibility, Favorite, Phone, Email, Print, CheckCircle,
+  Cancel, Warning, History, Feedback, FilterList, Schedule, ContentCopy
 } from '@mui/icons-material';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -41,16 +41,14 @@ const PINDashboard = () => {
   // Request dialog state
   const [requestDialogOpen, setRequestDialogOpen] = useState(false);
   const [editingRequest, setEditingRequest] = useState(null); // null = create
-  const [duplicatingRequest, setDuplicatingRequest] = useState(null);
+  
   const [requestForm, setRequestForm] = useState({
     title: '',
     description: '',
     category: '',
     category_id: null,
     urgency: 'normal',
-    location: '',
-    preferredTime: '',
-    specialRequirements: ''
+    location: ''
   });
   const [categories, setCategories] = useState([]);
 
@@ -107,12 +105,15 @@ const PINDashboard = () => {
       });
       
       // Normalize request data to match UI expectations
-      const normalizedRequests = userRequests.map(r => ({
+      const normalizedRequests = userRequests.map(r => {
+        const backendUrgency = (r.urgency || 'medium').toLowerCase();
+        const uiUrgency = backendUrgency === 'high' ? 'urgent' : backendUrgency === 'medium' ? 'normal' : 'low';
+        return ({
         id: r.id || r.pin_requests_id,
         title: r.title,
         description: r.description,
         category: r.category || '',
-        urgency: r.urgency || 'normal',
+        urgency: uiUrgency,
         location: r.location || '',
         status: r.status || 'open',
         preferredTime: r.preferred_time || r.preferredTime || '',
@@ -125,7 +126,8 @@ const PINDashboard = () => {
         updatedAt: r.updated_at || r.updatedAt || r.created_at || r.createdAt,
         completedAt: r.completed_at || r.completedAt,
         feedbackSubmitted: !!(r.feedback_rating || r.feedback_comment || r.feedback_submitted_at)
-      }));
+      });
+      });
       
       // Filter requests by status
       const active = normalizedRequests.filter(r => 
@@ -193,51 +195,32 @@ const PINDashboard = () => {
   // ===== Request CRUD Operations =====
   const openCreateRequest = ()=>{
     setEditingRequest(null);
-    setDuplicatingRequest(null);
     setRequestForm({
       title: '',
       description: '',
       category: '',
       category_id: null,
       urgency: 'normal',
-      location: '',
-      preferredTime: '',
-      specialRequirements: ''
+      location: ''
     });
     setRequestDialogOpen(true);
   };
 
   const openEditRequest = (request)=>{
     setEditingRequest(request);
-    setDuplicatingRequest(null);
+    const mapUrgencyToUi = (val)=> (val === 'high' ? 'urgent' : val === 'medium' ? 'normal' : (val || 'normal'));
     setRequestForm({
       title: request.title,
       description: request.description,
       category: request.category,
       category_id: (categories.find(c => c.name === request.category)?.id) ?? null,
-      urgency: request.urgency || 'normal',
-      location: request.location,
-      preferredTime: request.preferredTime,
-      specialRequirements: request.specialRequirements || ''
+      urgency: mapUrgencyToUi((request.urgency || '').toLowerCase()),
+      location: request.location
     });
     setRequestDialogOpen(true);
   };
 
-  const duplicateRequest = (request)=>{
-    setEditingRequest(null);
-    setDuplicatingRequest(request);
-    setRequestForm({
-      title: `${request.title} (Copy)`,
-      description: request.description,
-      category: request.category,
-      category_id: (categories.find(c => c.name === request.category)?.id) ?? null,
-      urgency: request.urgency || 'normal',
-      location: request.location,
-      preferredTime: request.preferredTime,
-      specialRequirements: request.specialRequirements || ''
-    });
-    setRequestDialogOpen(true);
-  };
+  
 
   const saveRequest = async ()=>{
     try{
@@ -285,9 +268,6 @@ const PINDashboard = () => {
         const response = await axios.patch(`http://localhost:5000/api/help-requests/${editingRequest.id}`, payload);
         console.log('Edit response:', response);
         setToast({ open:true, msg:'Request updated successfully', severity:'success' });
-      } else if (duplicatingRequest){
-        await axios.post('http://localhost:5000/api/help-requests', payload);
-        setToast({ open:true, msg:'Request duplicated successfully', severity:'success' });
       } else {
         await axios.post('http://localhost:5000/api/help-requests', payload);
         setToast({ open:true, msg:'Help request created successfully', severity:'success' });
@@ -344,6 +324,42 @@ const PINDashboard = () => {
     }catch(e){
       console.error(e);
       setToast({ open:true, msg:'Failed to cancel request', severity:'error' });
+    }
+  };
+
+  const duplicateRequestNow = async (request)=>{
+    try{
+      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      const userId = user?.users_id || user?.id;
+      if (!userId) {
+        setToast({ open:true, msg:'User not found. Please login again.', severity:'error' });
+        navigate('/', { replace: true });
+        return;
+      }
+
+      const backendUrgency = (request.urgency || 'normal').toLowerCase();
+      const urgencyForBackend = backendUrgency === 'urgent' ? 'high' : backendUrgency === 'normal' ? 'medium' : 'low';
+
+      // Try to preserve category by ID if available, else map from name
+      const categoryIdFromRequest = request.category_id || request.categoryId ||
+        (categories.find(c => c.name === request.category)?.id) || null;
+
+      const payload = {
+        title: `${request.title} (Copy)`,
+        description: request.description,
+        user_id: userId,
+        urgency: urgencyForBackend,
+        location: request.location || '',
+        category_id: categoryIdFromRequest
+      };
+
+      await axios.post('http://localhost:5000/api/help-requests', payload);
+      setToast({ open:true, msg:'Request duplicated successfully', severity:'success' });
+      await fetchPINData();
+    }catch(e){
+      console.error('Duplicate request error:', e);
+      const errorMsg = e.response?.data?.error || e.message || 'Failed to duplicate request';
+      setToast({ open:true, msg: errorMsg, severity:'error' });
     }
   };
 
@@ -473,8 +489,12 @@ const PINDashboard = () => {
         <Typography variant="subtitle1" sx={{ opacity:0.9, mt:0.5 }}>Manage your help requests and track progress</Typography>
         <Stack direction="row" justifyContent="center" spacing={2} sx={{ mt:2 }}>
           <Tooltip title="Refresh">
-            <IconButton onClick={handleRefresh} disabled={refreshing} sx={{ border:'1px solid rgba(255,255,255,0.2)' }}>
-              <Refresh/>
+            <IconButton 
+              onClick={handleRefresh} 
+              disabled={refreshing} 
+              sx={{ border:'1px solid rgba(255,255,255,0.2)', color: '#fff' }}
+            >
+              <Refresh sx={{ color: '#fff' }}/>
             </IconButton>
           </Tooltip>
           <Button variant="contained" color="primary" startIcon={<Add/>} onClick={openCreateRequest}>
@@ -525,12 +545,12 @@ const PINDashboard = () => {
                   <RequestCard 
                     request={request} 
                     onEdit={openEditRequest}
-                    onDuplicate={duplicateRequest}
                     onComplete={markAsComplete}
                     onUrgent={markAsUrgent}
                     onCancel={cancelRequest}
                     onDelete={deleteRequest}
                     onPrint={printRequest}
+                    onDuplicate={duplicateRequestNow}
                   />
                 </Grid>
               ))}
@@ -579,7 +599,7 @@ const PINDashboard = () => {
                     request={request} 
                     onFeedback={openFeedback}
                     onPrint={printRequest}
-                    onDuplicate={duplicateRequest}
+                    onDuplicate={duplicateRequestNow}
                   />
                 </Grid>
               ))}
@@ -640,11 +660,7 @@ const PINDashboard = () => {
                       <TableCell align="center">{new Date(request.updatedAt).toLocaleDateString()}</TableCell>
                       <TableCell align="right">
                         <Stack direction="row" spacing={1} justifyContent="flex-end">
-                          <Tooltip title="Duplicate">
-                            <IconButton size="small" onClick={()=>duplicateRequest(request)}>
-                              <ContentCopy/>
-                            </IconButton>
-                          </Tooltip>
+                          
                           <Tooltip title="Print">
                             <IconButton size="small" onClick={()=>printRequest(request)}>
                               <Print/>
@@ -671,7 +687,7 @@ const PINDashboard = () => {
       {/* Request Dialog */}
       <Dialog open={requestDialogOpen} onClose={()=>setRequestDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle sx={{ fontWeight:800 }}>
-          {editingRequest ? 'Edit Help Request' : duplicatingRequest ? 'Duplicate Help Request' : 'New Help Request'}
+          {editingRequest ? 'Edit Help Request' : 'New Help Request'}
         </DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2} sx={{ mt:0.5 }}>
@@ -729,21 +745,7 @@ const PINDashboard = () => {
                 onChange={e=>setRequestForm(f=>({ ...f, location:e.target.value }))} 
                 fullWidth
               />
-              <TextField 
-                label="Preferred Time" 
-                value={requestForm.preferredTime} 
-                onChange={e=>setRequestForm(f=>({ ...f, preferredTime:e.target.value }))} 
-                fullWidth
-              />
             </Stack>
-            <TextField 
-              label="Special Requirements" 
-              value={requestForm.specialRequirements} 
-              onChange={e=>setRequestForm(f=>({ ...f, specialRequirements:e.target.value }))} 
-              multiline 
-              minRows={2}
-              placeholder="Any specific needs, preferences, or additional information..."
-            />
           </Stack>
         </DialogContent>
         <DialogActions>
@@ -819,7 +821,7 @@ const PINDashboard = () => {
 // =============================================
 // Request Card Component
 // =============================================
-function RequestCard({ request, onEdit, onDuplicate, onComplete, onUrgent, onCancel, onDelete, onPrint }){
+function RequestCard({ request, onEdit, onComplete, onUrgent, onCancel, onDelete, onPrint, onDuplicate }){
   return (
     <Paper variant="outlined" sx={{ p:2, borderRadius:2, height:'100%' }}>
       <Stack spacing={1.5}>
@@ -921,11 +923,7 @@ function RequestCard({ request, onEdit, onDuplicate, onComplete, onUrgent, onCan
               <Edit/>
             </IconButton>
           </Tooltip>
-          <Tooltip title="Duplicate">
-            <IconButton size="small" onClick={()=>onDuplicate(request)}>
-              <ContentCopy/>
-            </IconButton>
-          </Tooltip>
+          
           <Tooltip title="Mark Complete">
             <IconButton size="small" color="success" onClick={()=>onComplete(request.id)}>
               <CheckCircle/>
@@ -941,6 +939,11 @@ function RequestCard({ request, onEdit, onDuplicate, onComplete, onUrgent, onCan
           <Tooltip title="Print">
             <IconButton size="small" onClick={()=>onPrint(request)}>
               <Print/>
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Duplicate">
+            <IconButton size="small" onClick={()=>onDuplicate(request)}>
+              <ContentCopy/>
             </IconButton>
           </Tooltip>
           <Tooltip title="Cancel">
@@ -1025,14 +1028,15 @@ function CompletedRequestCard({ request, onFeedback, onPrint, onDuplicate }){
               </Button>
             </Tooltip>
           )}
-          <Tooltip title="Duplicate Request">
-            <IconButton size="small" onClick={()=>onDuplicate(request)}>
-              <ContentCopy/>
-            </IconButton>
-          </Tooltip>
+          
           <Tooltip title="Print">
             <IconButton size="small" onClick={()=>onPrint(request)}>
               <Print/>
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Duplicate">
+            <IconButton size="small" onClick={()=>onDuplicate(request)}>
+              <ContentCopy/>
             </IconButton>
           </Tooltip>
           {request.feedbackSubmitted && (
