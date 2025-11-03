@@ -46,11 +46,28 @@ const PINDashboard = () => {
     title: '',
     description: '',
     category: '',
+    category_id: null,
     urgency: 'normal',
     location: '',
     preferredTime: '',
     specialRequirements: ''
   });
+  const [categories, setCategories] = useState([]);
+
+  // Fetch categories for select options
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const res = await axios.get('http://localhost:5000/api/categories');
+        const items = Array.isArray(res.data) ? res.data : [];
+        setCategories(items);
+      } catch (e) {
+        // Silent fail; fallback options remain
+        console.error('Failed to load categories', e);
+      }
+    };
+    fetchCategories();
+  }, []);
   
   // Feedback dialog state
   const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false);
@@ -181,6 +198,7 @@ const PINDashboard = () => {
       title: '',
       description: '',
       category: '',
+      category_id: null,
       urgency: 'normal',
       location: '',
       preferredTime: '',
@@ -196,6 +214,7 @@ const PINDashboard = () => {
       title: request.title,
       description: request.description,
       category: request.category,
+      category_id: (categories.find(c => c.name === request.category)?.id) ?? null,
       urgency: request.urgency || 'normal',
       location: request.location,
       preferredTime: request.preferredTime,
@@ -211,6 +230,7 @@ const PINDashboard = () => {
       title: `${request.title} (Copy)`,
       description: request.description,
       category: request.category,
+      category_id: (categories.find(c => c.name === request.category)?.id) ?? null,
       urgency: request.urgency || 'normal',
       location: request.location,
       preferredTime: request.preferredTime,
@@ -673,17 +693,21 @@ const PINDashboard = () => {
             <Stack direction={{ xs:'column', sm:'row' }} spacing={2}>
             <TextField 
                 label="Category" 
-                value={requestForm.category} 
-                onChange={e=>setRequestForm(f=>({ ...f, category:e.target.value }))} 
+                value={requestForm.category_id ?? ''} 
+                onChange={e=>setRequestForm(f=>({ ...f, category_id: e.target.value }))} 
                 fullWidth
                 select
               >
-                <MenuItem value="shopping">Shopping Assistance</MenuItem>
-                <MenuItem value="transportation">Transportation</MenuItem>
-                <MenuItem value="companionship">Companionship</MenuItem>
-                <MenuItem value="household">Household Tasks</MenuItem>
-                <MenuItem value="technology">Technology Help</MenuItem>
-                <MenuItem value="other">Other</MenuItem>
+                {categories.length > 0 ? (
+                  categories.map(cat => (
+                    <MenuItem key={cat.id} value={cat.id}>{cat.name}</MenuItem>
+                  ))
+                ) : (
+                  <>
+                    <MenuItem value="">Select a category</MenuItem>
+                    <MenuItem value={0} disabled>— No categories available —</MenuItem>
+                  </>
+                )}
               </TextField>
             
               <TextField 
