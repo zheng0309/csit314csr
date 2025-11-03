@@ -1381,52 +1381,69 @@ def get_pm_analytics():
         # Get date ranges
         now = datetime.utcnow()
         today = now.date()
+        today_start = datetime.combine(today, datetime.min.time())
+        today_end = datetime.combine(today, datetime.max.time())
         
-        # Calculate week start (7 days ago)
-        week_start = today - timedelta(days=7)
+        # Calculate week start (this calendar week - last 7 days, but ensure it's within current month)
+        # We'll use the start of current month as the minimum to ensure monthly >= weekly
+        week_start_raw = today - timedelta(days=6)
+        month_start = today.replace(day=1)
+        # Use the later of (week_start_raw) or (month_start) to ensure weekly is within current month
+        week_start = max(week_start_raw, month_start)
+        week_start_dt = datetime.combine(week_start, datetime.min.time())
         
         # Calculate month start (first day of current month)
-        month_start = today.replace(day=1)
+        month_start_dt = datetime.combine(month_start, datetime.min.time())
         
-        # Daily analytics (today)
+        # Daily analytics (today only)
         daily_created = PinRequest.query.filter(
-            func.date(PinRequest.created_at) == today
+            PinRequest.created_at >= today_start,
+            PinRequest.created_at <= today_end
         ).count()
         daily_closed = PinRequest.query.filter(
-            func.date(PinRequest.completed_at) == today,
+            PinRequest.completed_at >= today_start,
+            PinRequest.completed_at <= today_end,
             PinRequest.status == 'completed'
         ).count()
         
-        # Weekly analytics (last 7 days)
+        # Weekly analytics (last 7 days, but only within current month to ensure monthly >= weekly)
         weekly_created = PinRequest.query.filter(
-            func.date(PinRequest.created_at) >= week_start
+            PinRequest.created_at >= week_start_dt
         ).count()
         weekly_closed = PinRequest.query.filter(
-            func.date(PinRequest.completed_at) >= week_start,
+            PinRequest.completed_at >= week_start_dt,
             PinRequest.status == 'completed'
         ).count()
         
-        # Monthly analytics (this month)
+        # Monthly analytics (this month from first day to today)
         monthly_created = PinRequest.query.filter(
-            func.date(PinRequest.created_at) >= month_start
+            PinRequest.created_at >= month_start_dt
         ).count()
         monthly_closed = PinRequest.query.filter(
-            func.date(PinRequest.completed_at) >= month_start,
+            PinRequest.completed_at >= month_start_dt,
             PinRequest.status == 'completed'
         ).count()
+        
+        # Format date ranges for display
+        daily_range = f"{today.strftime('%b %d')}"
+        weekly_range = f"{week_start.strftime('%b %d')} - {today.strftime('%b %d')}"
+        monthly_range = f"{month_start.strftime('%b %d')} - {today.strftime('%b %d')}"
         
         return jsonify({
             "daily": {
                 "created": daily_created,
-                "closed": daily_closed
+                "closed": daily_closed,
+                "dateRange": daily_range
             },
             "weekly": {
                 "created": weekly_created,
-                "closed": weekly_closed
+                "closed": weekly_closed,
+                "dateRange": weekly_range
             },
             "monthly": {
                 "created": monthly_created,
-                "closed": monthly_closed
+                "closed": monthly_closed,
+                "dateRange": monthly_range
             }
         }), 200
     except Exception as e:
@@ -1435,3 +1452,91 @@ def get_pm_analytics():
         import traceback
         traceback.print_exc()
         return jsonify({"error": f"Failed to fetch analytics: {str(e)}"}), 500
+
+
+# Get detailed analytics requests for tooltips
+@main.route('/api/pm/analytics/<period>/<type>', methods=['GET'])
+@cross_origin()
+def get_analytics_requests(period, type):
+    """
+    period: 'daily', 'weekly', 'monthly'
+    type: 'created' or 'closed'
+    Returns list of requests for hover tooltip
+    """
+    try:
+        now = datetime.utcnow()
+        today = now.date()
+        today_start = datetime.combine(today, datetime.min.time())
+        today_end = datetime.combine(today, datetime.max.time())
+        
+        # Calculate date ranges based on period
+        month_start = today.replace(day=1)
+        
+        if period == 'daily':
+            start_date = today_start
+            end_date = today_end
+        elif period == 'weekly':
+            # Weekly: last 7 days, but only within current month
+            week_start_raw = today - timedelta(days=6)
+            week_start = max(week_start_raw, month_start)
+            start_date = datetime.combine(week_start, datetime.min.time())
+            end_date = now
+        elif period == 'monthly':
+            start_date = datetime.combine(month_start, datetime.min.time())
+            end_date = now
+        else:
+            return jsonify({"error": "Invalid period"}), 400
+        
+        # Query requests based on type
+        if type == 'created':
+            requests = PinRequest.query.filter(
+                PinRequest.created_at >= start_date,
+                PinRequest.created_at <= end_date
+            ).all()
+        elif type == 'closed':
+            requests = PinRequest.query.filter(
+                PinRequest.completed_at >= start_date,
+                PinRequest.completed_at <= end_date,
+                PinRequest.status == 'completed'
+            ).all()
+        else:
+            return jsonify({"error": "Invalid type"}), 400
+        
+        # Format response
+        result = []
+        for req in requests:
+            # Safely get category name
+            category_name = None
+            try:
+                category_name = req.category.name if req.category else None
+            except Exception:
+                db.session.rollback()
+                category_name = None
+            
+            # Safely get requester name
+            requester_name = None
+            try:
+                requester_name = req.pin_user.name if req.pin_user else None
+            except Exception:
+                db.session.rollback()
+                requester_name = None
+            
+            result.append({
+                "id": req.pin_requests_id,
+                "title": req.title,
+                "description": req.description or "",
+                "category": category_name or "Uncategorized",
+                "status": req.status,
+                "urgency": req.urgency,
+                "requester": requester_name or "Unknown",
+                "created_at": req.created_at.isoformat() if req.created_at else None,
+                "completed_at": req.completed_at.isoformat() if req.completed_at else None
+            })
+        
+        return jsonify(result), 200
+    except Exception as e:
+        print(f"Error in get_analytics_requests: {str(e)}")
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to fetch analytics requests: {str(e)}"}), 500

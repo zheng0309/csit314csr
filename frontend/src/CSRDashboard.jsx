@@ -723,16 +723,16 @@ const CSRDashboard = () => {
                               )}
                             </Box>
                             <Stack direction="row" gap={1} sx={{ flexShrink: 0 }}>
-                              <Chip variant="outlined" color="success" label={`Completed • ${new Date(r.completedAt).toLocaleDateString()}`} />
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                startIcon={<Info />}
+                            <Chip variant="outlined" color="success" label={`Completed • ${new Date(r.completedAt).toLocaleDateString()}`} />
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<Info />}
                                 onClick={() => openDetails(r)}
-                                sx={{ ml: 1 }}
-                              >
-                                Details
-                              </Button>
+                              sx={{ ml: 1 }}
+                            >
+                              Details
+                            </Button>
                             </Stack>
                           </Stack>
                         </Paper>
@@ -791,7 +791,7 @@ const CSRDashboard = () => {
             
             <Stack spacing={1.5}>
               <Typography variant="subtitle2" sx={{ fontWeight: 600, opacity: 0.9 }}>Request Information</Typography>
-              <Stack direction="row" gap={1} flexWrap="wrap">
+            <Stack direction="row" gap={1} flexWrap="wrap">
                 {detailReq?.category && <Chip label={`Category: ${detailReq.category}`} variant="outlined" />}
                 {detailReq?.urgency && (
                   <Chip 
@@ -877,7 +877,7 @@ const CSRDashboard = () => {
         <DialogActions>
           <Button onClick={() => setDetailOpen(false)}>Close</Button>
           {detailReq?.status !== 'completed' && (
-            <Button variant="contained" onClick={() => { setDetailOpen(false); acceptRequest(detailReq.id); }}>Accept</Button>
+          <Button variant="contained" onClick={() => { setDetailOpen(false); acceptRequest(detailReq.id); }}>Accept</Button>
           )}
         </DialogActions>
       </Dialog>

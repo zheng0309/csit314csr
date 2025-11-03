@@ -107,7 +107,7 @@ export default function ViewDetails() {
           <Typography variant="h6" sx={{ fontWeight: 800, mb: 1 }}>PIN Feedback</Typography>
           {data.feedback ? (
             <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(0,0,0,0.02)' }}>
-              <Stack spacing={1.5}>
+            <Stack spacing={1.5}>
                 {data.feedback.rating && (
                   <Box>
                     <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>Rating</Typography>
@@ -137,8 +137,8 @@ export default function ViewDetails() {
                     </Typography>
                   )}
                 </Stack>
-              </Stack>
-            </Paper>
+                  </Stack>
+                </Paper>
           ) : (
             <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(0,0,0,0.02)' }}>
               <Typography variant="body2" sx={{ color: '#666', fontStyle: 'italic' }}>

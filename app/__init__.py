@@ -4,7 +4,7 @@ from flask_cors import CORS
 from dotenv import load_dotenv  
 from app.database import init_db, db
 from app.models import *
-from app.routes import main
+from app.routes import main 
 from sqlalchemy import inspect
 from sqlalchemy import text 
 

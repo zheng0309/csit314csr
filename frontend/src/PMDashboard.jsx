@@ -1,10 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
   Container, Box, Typography, Button, IconButton, Stack, Tabs, Tab, Paper, Divider,
   TextField, InputAdornment, Dialog, DialogTitle, DialogContent, DialogActions,
   Snackbar, Alert, Grid, Chip, MenuItem, Tooltip, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, LinearProgress, Badge
+  TableContainer, TableHead, TableRow, LinearProgress, Badge, Popover, List, ListItem, ListItemText
 } from '@mui/material';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer
+} from 'recharts';
 import {
   Logout, Refresh, Search, Add, Edit, Delete, Save, Close as CloseIcon,
   Category as CategoryIcon, CheckCircle, Replay, FilterList, Timeline
@@ -297,11 +300,17 @@ export default function PMDashboard(){
             <Typography variant="h6" sx={{ mb:1, fontWeight:700 }}>Activity Summary</Typography>
             <Typography variant="body2" sx={{ mb:2, opacity:0.85 }}>View system activity summaries by date range.</Typography>
 
-            <Grid container spacing={2}>
+            <Grid container spacing={2} sx={{ mb:3 }}>
               <SummaryCard label="Daily" data={analytics.daily} delay={100}/>
               <SummaryCard label="Weekly" data={analytics.weekly} delay={200}/>
               <SummaryCard label="Monthly" data={analytics.monthly} delay={300}/>
             </Grid>
+
+            {/* Activity Chart */}
+            <Paper variant="outlined" sx={{ p:2.5, borderRadius:2, mt:2 }}>
+              <Typography variant="h6" sx={{ mb:2, fontWeight:700 }}>Activity Overview Chart</Typography>
+              <ActivityChart data={analytics} />
+            </Paper>
           </Box>
         )}
       </Paper>
@@ -333,21 +342,30 @@ export default function PMDashboard(){
 }
 
 function SummaryCard({ label, data={}, delay=0 }){
-  const { created=0, closed=0 } = data || {};
+  const { created=0, closed=0, dateRange='' } = data || {};
+  const period = label.toLowerCase(); // 'daily', 'weekly', 'monthly'
+  
   return (
     <Grid item xs={12} md={4}>
       <Paper variant="outlined" sx={{ p:2, borderRadius:2 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center">
-          <Typography variant="h6" sx={{ fontWeight:700 }}>{label}</Typography>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight:700 }}>{label}</Typography>
+            {dateRange && (label === 'Weekly' || label === 'Monthly') && (
+              <Typography variant="caption" sx={{ opacity:0.7, display:'block', mt:0.25 }}>
+                ({dateRange})
+              </Typography>
+            )}
+          </Box>
           <FilterList/>
         </Stack>
         <Divider sx={{ my:1.5 }}/>
         <Grid container spacing={1}>
           <Grid item xs={6}>
-            <StatPill label="Created" value={created} color="#6366f1"/>
+            <StatPill label="Created" value={created} color="#6366f1" period={period} type="created"/>
           </Grid>
           <Grid item xs={6}>
-            <StatPill label="Closed" value={closed} color="#10b981"/>
+            <StatPill label="Closed" value={closed} color="#10b981" period={period} type="closed"/>
           </Grid>
         </Grid>
       </Paper>
@@ -355,11 +373,248 @@ function SummaryCard({ label, data={}, delay=0 }){
   );
 }
 
-function StatPill({ label, value, color }){
+function StatPill({ label, value, color, period, type }){
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [isHoveringBox, setIsHoveringBox] = useState(false);
+  const [isHoveringPopover, setIsHoveringPopover] = useState(false);
+  const open = Boolean(anchorEl) && (isHoveringBox || isHoveringPopover);
+  const hoverTimeoutRef = useRef(null);
+
+  const handleMouseEnter = async (event) => {
+    if (value === 0) return; // No requests to show
+    
+    // Clear any pending timeout
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    
+    setAnchorEl(event.currentTarget);
+    setIsHoveringBox(true);
+    setLoading(true);
+    
+    try {
+      const res = await api.get(`/api/pm/analytics/${period}/${type}`);
+      setRequests(Array.isArray(res.data) ? res.data : []);
+    } catch (e) {
+      console.error('Failed to load requests:', e);
+      setRequests([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBoxMouseLeave = () => {
+    setIsHoveringBox(false);
+    // Give a small delay to allow mouse to move to popover
+    hoverTimeoutRef.current = setTimeout(() => {
+      if (!isHoveringPopover) {
+        setAnchorEl(null);
+        setRequests([]);
+      }
+    }, 150);
+  };
+
+  const handlePopoverEnter = () => {
+    // Clear timeout since we're now hovering over popover
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    setIsHoveringPopover(true);
+  };
+
+  const handlePopoverLeave = () => {
+    setIsHoveringPopover(false);
+    setAnchorEl(null);
+    setRequests([]);
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+    };
+  }, []);
+
   return (
-    <Box sx={{ p:2, borderRadius:2, border:'1px solid rgba(255,255,255,0.12)' }}>
-      <Typography variant="body2" sx={{ opacity:0.8 }}>{label}</Typography>
-      <Typography variant="h4" sx={{ fontWeight:800, color }}>{value}</Typography>
+    <>
+      <Box 
+        sx={{ 
+          p:2, 
+          borderRadius:2, 
+          border:'1px solid rgba(255,255,255,0.12)',
+          cursor: value > 0 ? 'pointer' : 'default',
+          transition: 'all 0.2s',
+          '&:hover': value > 0 ? {
+            bgcolor: 'rgba(255,255,255,0.05)',
+            borderColor: 'rgba(255,255,255,0.2)'
+          } : {}
+        }}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleBoxMouseLeave}
+      >
+        <Typography variant="body2" sx={{ opacity:0.8 }}>{label}</Typography>
+        <Typography variant="h4" sx={{ fontWeight:800, color }}>{value}</Typography>
+      </Box>
+      <Popover
+        open={open}
+        anchorEl={anchorEl}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+        onClose={handlePopoverLeave}
+        disableRestoreFocus
+        disableAutoFocus
+        disableEnforceFocus
+        sx={{ 
+          pointerEvents: 'none', 
+          mt: 1,
+          '& .MuiPaper-root': {
+            pointerEvents: 'auto'
+          }
+        }}
+        PaperProps={{
+          onMouseEnter: handlePopoverEnter,
+          onMouseLeave: handlePopoverLeave,
+          component: 'div',
+          sx: { 
+            pointerEvents: 'auto',
+            maxWidth: 400,
+            maxHeight: 500,
+            overflow: 'auto'
+          }
+        }}
+      >
+        <Box sx={{ p: 2, minWidth: 350 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+            {label} - {period.charAt(0).toUpperCase() + period.slice(1)} ({requests.length})
+          </Typography>
+          {loading ? (
+            <Typography variant="body2" sx={{ opacity: 0.7 }}>Loading...</Typography>
+          ) : requests.length === 0 ? (
+            <Typography variant="body2" sx={{ opacity: 0.7 }}>No requests found</Typography>
+          ) : (
+            <List dense>
+              {requests.map((req) => (
+                <ListItem 
+                  key={req.id} 
+                  sx={{ 
+                    border: '1px solid rgba(0,0,0,0.1)', 
+                    borderRadius: 1, 
+                    mb: 0.5,
+                    bgcolor: 'background.paper'
+                  }}
+                >
+                  <ListItemText
+                    primary={
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {req.title}
+                      </Typography>
+                    }
+                    secondary={
+                      <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                        {req.category && (
+                          <Typography variant="caption" sx={{ display: 'block' }}>
+                            Category: {req.category}
+                          </Typography>
+                        )}
+                        {req.requester && (
+                          <Typography variant="caption" sx={{ display: 'block', opacity: 0.7 }}>
+                            Requester: {req.requester}
+                          </Typography>
+                        )}
+                        {req.created_at && (
+                          <Typography variant="caption" sx={{ display: 'block', opacity: 0.6 }}>
+                            {type === 'created' ? 'Created' : 'Completed'}: {new Date(req.created_at || req.completed_at).toLocaleString()}
+                          </Typography>
+                        )}
+                        {req.urgency && (
+                          <Chip 
+                            label={req.urgency} 
+                            size="small" 
+                            color={req.urgency === 'high' ? 'error' : req.urgency === 'medium' ? 'warning' : 'default'}
+                            sx={{ mt: 0.5, height: 20 }}
+                          />
+                        )}
+                      </Stack>
+                    }
+                  />
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </Box>
+      </Popover>
+    </>
+  );
+}
+
+// Activity Chart Component
+function ActivityChart({ data = {} }) {
+  // Prepare chart data
+  const chartData = [
+    {
+      period: 'Daily',
+      Created: data.daily?.created || 0,
+      Closed: data.daily?.closed || 0,
+    },
+    {
+      period: 'Weekly',
+      Created: data.weekly?.created || 0,
+      Closed: data.weekly?.closed || 0,
+    },
+    {
+      period: 'Monthly',
+      Created: data.monthly?.created || 0,
+      Closed: data.monthly?.closed || 0,
+    },
+  ];
+
+  return (
+    <Box sx={{ width: '100%', height: 400, mt: 2 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart
+          data={chartData}
+          margin={{
+            top: 20,
+            right: 30,
+            left: 20,
+            bottom: 5,
+          }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+          <XAxis 
+            dataKey="period" 
+            stroke="rgba(255,255,255,0.7)"
+            style={{ fontSize: '0.875rem' }}
+          />
+          <YAxis 
+            stroke="rgba(255,255,255,0.7)"
+            style={{ fontSize: '0.875rem' }}
+          />
+          <RechartsTooltip
+            contentStyle={{
+              backgroundColor: 'rgba(0,0,0,0.85)',
+              border: '1px solid rgba(255,255,255,0.2)',
+              borderRadius: '4px',
+              color: '#fff'
+            }}
+          />
+          <Legend 
+            wrapperStyle={{ color: 'rgba(255,255,255,0.7)' }}
+          />
+          <Bar dataKey="Created" fill="#6366f1" name="Created Requests" />
+          <Bar dataKey="Closed" fill="#10b981" name="Closed Requests" />
+        </BarChart>
+      </ResponsiveContainer>
     </Box>
   );
 }
