@@ -15,8 +15,8 @@ import "./App.css";
 import CSRDashboard from "/src/CSRDashboard.jsx";
 import PINDashboard from "/src/PINDashboard.jsx";
 import PMDashboard from "/src/PMDashboard.jsx";
-import AdminDashboard from "/src/AdminDashboard.jsx";
 import ViewDetails from "/src/viewDetails.jsx";
+import AdminDashboardV2 from "/src/AdminDashboardV2.jsx";
 
 function ProtectedRoute({ children, allowed }) {
   const raw = typeof window !== "undefined" ? localStorage.getItem("user") : null;
@@ -58,7 +58,7 @@ export default function App() {
           path="/admindashboard"
           element={
             <ProtectedRoute allowed={["admin"]}>
-              <AdminDashboard />
+              <AdminDashboardV2 />
             </ProtectedRoute>
           }
         />
