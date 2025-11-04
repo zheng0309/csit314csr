@@ -30,6 +30,7 @@ export default function AdminDashboard(){
   // Data
   const [users, setUsers] = useState([]);
   const [activityLogs, setActivityLogs] = useState([]);
+  const [stats, setStats] = useState({ total:0, total_excluding_admin:0, pin:0, csr_rep:0, platform_manager:0, admin:0 });
 
   // Filters and search
   const [searchQuery, setSearchQuery] = useState('');
@@ -78,6 +79,7 @@ export default function AdminDashboard(){
       const normalized = incoming.map(u => ({ ...u, role: normalizeRole(u.role) }));
       setUsers(normalized);
       setActivityLogs([]);
+      if (statsRes?.data) setStats(statsRes.data);
       if (USE_MOCKS) setToast({ open:true, msg:'Admin Mock mode — using sample data', severity:'info' });
     }catch(e){
       console.error(e);
@@ -195,12 +197,13 @@ export default function AdminDashboard(){
   const deleteUser = async ()=>{
     try{
       await axiosClient.delete(`/api/admin/users/${userToDelete.users_id}`);
-      setToast({ open:true, msg:'User deleted successfully', severity:'info' });
+      setToast({ open:true, msg:'User deleted successfully', severity:'success' });
       setDeleteDialogOpen(false);
       await fetchAdminData();
     }catch(e){
       console.error(e);
-      setToast({ open:true, msg:'Failed to delete user', severity:'error' });
+      const msg = e?.response?.data?.error || e?.message || 'Failed to delete user';
+      setToast({ open:true, msg, severity:'error' });
     }
   };
 
@@ -309,7 +312,7 @@ export default function AdminDashboard(){
         <Grid item xs={12} sm={6} md={3}>
           <StatCard 
             label="Total Users" 
-            value={users.length} 
+            value={stats.total_excluding_admin || users.length} 
             color="#6366f1"
             icon={<Person/>}
           />
@@ -317,7 +320,7 @@ export default function AdminDashboard(){
         <Grid item xs={12} sm={6} md={3}>
           <StatCard 
             label="PIN Users" 
-            value={users.filter(u => u.role === 'pin').length} 
+            value={stats.pin ?? users.filter(u => u.role === 'pin').length} 
             color="#10b981"
             icon={<Person/>}
           />
@@ -325,7 +328,7 @@ export default function AdminDashboard(){
         <Grid item xs={12} sm={6} md={3}>
           <StatCard 
             label="CSR Representative" 
-            value={users.filter(u => u.role === 'csr_rep').length} 
+            value={stats.csr_rep ?? users.filter(u => u.role === 'csr_rep').length} 
             color="#f59e0b"
             icon={<Person/>}
           />
@@ -333,7 +336,7 @@ export default function AdminDashboard(){
         <Grid item xs={12} sm={6} md={3}>
           <StatCard 
             label="Platform Managers" 
-            value={users.filter(u => u.role === 'platform_manager').length} 
+            value={stats.platform_manager ?? users.filter(u => u.role === 'platform_manager').length} 
             color="#ef4444"
             icon={<Security/>}
           />

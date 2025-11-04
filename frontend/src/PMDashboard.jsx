@@ -182,8 +182,8 @@ export default function PMDashboard(){
         <Typography variant="subtitle1" sx={{ opacity:0.9, mt:0.5 }}>Manage categories and oversee help requests</Typography>
         <Stack direction="row" justifyContent="center" spacing={2} sx={{ mt:2 }}>
           <Tooltip title="Refresh">
-            <IconButton onClick={handleRefresh} disabled={refreshing} sx={{ border:'1px solid rgba(255,255,255,0.2)' }}>
-              <Refresh/>
+            <IconButton onClick={handleRefresh} disabled={refreshing} sx={{ border:'1px solid rgba(255,255,255,0.2)', color:'#fff' }}>
+              <Refresh sx={{ color:'#fff' }}/>
             </IconButton>
           </Tooltip>
           <Button variant="contained" color="error" startIcon={<Logout/>} onClick={handleLogout}>

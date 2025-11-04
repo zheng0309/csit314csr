@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy import inspect, text, func, cast, Date
 from sqlalchemy.orm import joinedload
+from sqlalchemy.exc import IntegrityError
 
 main = Blueprint('main', __name__)
 
@@ -235,13 +236,41 @@ def admin_update_user(user_id):
 @main.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
 @cross_origin(origins=["http://localhost:5173"], supports_credentials=True)
 def admin_delete_user(user_id):
+    """Simple, deterministic delete: remove related records then delete user.
+    Safeguards: cannot delete the only remaining admin.
+    """
     try:
         user = User.query.get(user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
+
+        # Prevent deleting the last remaining admin
+        if (user.role or '').lower() == 'admin':
+            admin_count = User.query.filter(func.lower(User.role) == 'admin').count()
+            if admin_count <= 1:
+                return jsonify({"error": "Cannot delete the only remaining administrator account."}), 400
+
+        # Always remove dependent records first to avoid integrity errors
+        # 1) Collect this user's request IDs
+        req_ids = [rid for (rid,) in db.session.query(PinRequest.pin_requests_id).filter_by(user_id=user_id).all()]
+        if req_ids:
+            # 2) Delete dependencies that reference those requests
+            MatchHistory.query.filter(MatchHistory.request_id.in_(req_ids)).delete(synchronize_session=False)
+            CSRShortlist.query.filter(CSRShortlist.request_id.in_(req_ids)).delete(synchronize_session=False)
+            db.session.flush()
+            # 3) Now delete the requests
+            PinRequest.query.filter(PinRequest.pin_requests_id.in_(req_ids)).delete(synchronize_session=False)
+        # 4) Also remove records where this user is the CSR (not the requester)
+        MatchHistory.query.filter_by(csr_id=user_id).delete(synchronize_session=False)
+        CSRShortlist.query.filter_by(csr_id=user_id).delete(synchronize_session=False)
+        db.session.flush()
+
         db.session.delete(user)
         db.session.commit()
         return jsonify({"message": "deleted"}), 200
+    except IntegrityError as ie:
+        db.session.rollback()
+        return jsonify({"error": "Delete blocked by database constraints", "details": str(ie)}), 400
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Failed to delete user: {str(e)}"}), 500
@@ -271,6 +300,12 @@ def admin_reset_password(user_id):
 @cross_origin(origins=["http://localhost:5173"], supports_credentials=True)
 def admin_create_user_alias():
     return admin_create_user()
+
+# Alias for DELETE when environments block DELETE (use POST)
+@main.route('/api/admin/users/<int:user_id>/delete', methods=['POST'])
+@cross_origin(origins=["http://localhost:5173"], supports_credentials=True)
+def admin_delete_user_alias(user_id):
+    return admin_delete_user(user_id)
 
 # 🔎 Get Single Request By ID
 # ---------------------------------
