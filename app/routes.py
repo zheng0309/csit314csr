@@ -7,6 +7,7 @@ from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy import inspect, text, func, cast, Date
 from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import IntegrityError
+from collections import defaultdict
 
 main = Blueprint('main', __name__)
 
@@ -764,10 +765,21 @@ def get_open_help_requests():
             # Safely access requester name
             requester_name = None
             try:
-                requester_name = req.pin_user.name if req.pin_user else None
+                # Access via backref - this should work with the relationship
+                if req.pin_user:
+                    requester_name = req.pin_user.name
+                else:
+                    # Fallback: query User directly by user_id
+                    user = db.session.get(User, req.user_id)
+                    requester_name = user.name if user else None
             except Exception:
                 db.session.rollback()
-                requester_name = None
+                # Fallback: query User directly
+                try:
+                    user = db.session.get(User, req.user_id)
+                    requester_name = user.name if user else None
+                except Exception:
+                    requester_name = None
             
             data.append({
                 "id": req.pin_requests_id,
@@ -805,8 +817,25 @@ def get_accepted_requests(csr_id):
         ).all()
 
         data = []
+        request_ids = [m.request_id for m in matches]
+        
+        # Pre-load all requests and users to avoid transaction issues
+        requests = {}
+        if request_ids:
+            pin_requests = PinRequest.query.filter(PinRequest.pin_requests_id.in_(request_ids)).all()
+            for req in pin_requests:
+                requests[req.pin_requests_id] = req
+        
+        # Pre-load all users
+        user_ids = list(set([req.user_id for req in requests.values() if req.user_id]))
+        users = {}
+        if user_ids:
+            user_list = User.query.filter(User.users_id.in_(user_ids)).all()
+            for user in user_list:
+                users[user.users_id] = user
+        
         for m in matches:
-            req = PinRequest.query.get(m.request_id)
+            req = requests.get(m.request_id)
             if req:
                 # Safely get preferred_time and special_requirements using raw SQL
                 preferred_time = None
@@ -829,9 +858,22 @@ def get_accepted_requests(csr_id):
                 category_name = None
                 try:
                     category_name = req.category.name if req.category else None
-                except Exception:
-                    db.session.rollback()
+                except Exception as cat_err:
+                    # Don't rollback here - it will abort the transaction
+                    print(f"DEBUG: Error accessing category for request {m.request_id}: {str(cat_err)}")
                     category_name = None
+                
+                # Safely access requester name from pre-loaded users
+                requester_name = None
+                try:
+                    user = users.get(req.user_id)
+                    if user:
+                        requester_name = user.name
+                    else:
+                        print(f"DEBUG: User {req.user_id} not found in pre-loaded users for request {m.request_id}")
+                except Exception as user_err:
+                    print(f"DEBUG: Error accessing user for request {m.request_id}: {str(user_err)}")
+                    requester_name = None
                 
                 data.append({
                     "match_id": m.match_history_id,
@@ -842,6 +884,7 @@ def get_accepted_requests(csr_id):
                     "urgency": req.urgency,
                     "location": req.location,
                     "category": category_name,
+                    "requester_name": requester_name,
                     "preferred_time": preferred_time,
                     "preferredTime": preferred_time,
                     "special_requirements": special_requirements,
@@ -864,75 +907,204 @@ def get_accepted_requests(csr_id):
 @cross_origin()
 def get_completed_requests(csr_id):
     try:
-        matches = MatchHistory.query.filter_by(csr_id=csr_id, match_status="completed").all()
+        # Strategy: Get all completed requests (by any criteria) and filter to only those
+        # where this CSR has a MatchHistory entry (indicating they were involved)
+        
+        # First, get all MatchHistory entries for this CSR to find all requests they were involved with
+        matches = MatchHistory.query.filter_by(csr_id=csr_id).all()
+        print(f"DEBUG get_completed_requests: Found {len(matches)} MatchHistory entries for CSR {csr_id}")
 
-        data = []
-        for m in matches:
-            req = PinRequest.query.get(m.request_id)
-            if req:
-                # Safely access feedback using direct query
-                feedback_data = None
+        # Get all unique request IDs this CSR was involved with (regardless of match_status)
+        request_ids_with_match = set([m.request_id for m in matches])
+        print(f"DEBUG get_completed_requests: Found {len(request_ids_with_match)} unique request IDs with MatchHistory for CSR {csr_id}")
+        
+        # Now get all completed requests where this CSR was involved
+        # Strategy: For each request this CSR was involved with, check if it's completed by any criteria
+        
+        # Get all PinRequests for requests this CSR was involved with
+        all_completed_request_ids = set()
+        
+        if request_ids_with_match:
+            # Get all PinRequests for these request IDs
+            candidate_requests = PinRequest.query.options(joinedload(PinRequest.category_rel)).filter(
+                PinRequest.pin_requests_id.in_(list(request_ids_with_match))
+            ).all()
+            
+            # Check each request to see if it's completed by any criteria
+            for req in candidate_requests:
+                # Check if any MatchHistory entry for this CSR has match_status='completed'
+                has_completed_match = any(m.match_status == 'completed' for m in matches if m.request_id == req.pin_requests_id)
+                
+                # Check if request itself is completed
+                is_completed_by_status = (req.status == 'completed' or req.completed_at is not None)
+                
+                # Check if request has feedback (indicates completion)
+                has_feedback = False
                 try:
-                    # Check if feedback table exists before querying
                     inspector = inspect(db.engine)
                     if 'feedback' in inspector.get_table_names():
                         feedback = Feedback.query.filter_by(request_id=req.pin_requests_id).first()
                         if feedback:
-                            feedback_data = {
-                                "rating": feedback.rating,
-                                "comment": feedback.comment,
-                                "anonymous": feedback.anonymous,
-                                "submitted_at": feedback.submitted_at.isoformat() if feedback.submitted_at else None
-                            }
-                except Exception:
-                    db.session.rollback()
-                    feedback_data = None
-
-                # Safely get preferred_time and special_requirements using raw SQL
-                preferred_time = None
-                special_requirements = None
-                try:
-                    result = db.session.execute(
-                        text("SELECT preferred_time, special_requirements FROM pin_requests WHERE pin_requests_id = :id"),
-                        {"id": req.pin_requests_id}
-                    ).first()
-                    if result:
-                        preferred_time = result[0] if result[0] else None
-                        special_requirements = result[1] if result[1] else None
-                except (OperationalError, ProgrammingError):
-                    # Columns don't exist yet - this is OK
-                    pass
+                            has_feedback = True
                 except Exception:
                     pass
                 
-                # Safely access category
-                category_name = None
+                # If completed by any criteria, include it
+                if has_completed_match or is_completed_by_status or has_feedback:
+                    all_completed_request_ids.add(req.pin_requests_id)
+                    print(f"DEBUG: Request {req.pin_requests_id} is completed: has_completed_match={has_completed_match}, is_completed_by_status={is_completed_by_status}, has_feedback={has_feedback}")
+        
+        print(f"DEBUG get_completed_requests: Found {len(all_completed_request_ids)} completed request IDs for CSR {csr_id}")
+        
+        data = []
+        
+        if not all_completed_request_ids:
+            print(f"DEBUG get_completed_requests: Returning 0 completed requests for CSR {csr_id}")
+            return jsonify(data), 200
+        
+        # Query all PinRequests at once to avoid transaction issues
+        requests = {}
+        pin_requests = PinRequest.query.options(joinedload(PinRequest.category_rel)).filter(
+            PinRequest.pin_requests_id.in_(list(all_completed_request_ids))
+        ).all()
+        for req in pin_requests:
+            requests[req.pin_requests_id] = req
+        print(f"DEBUG get_completed_requests: Loaded {len(requests)} PinRequests")
+        
+        # Pre-load all users to avoid transaction issues
+        user_ids = list(set([req.user_id for req in requests.values() if req.user_id]))
+        users = {}
+        if user_ids:
+            user_list = User.query.filter(User.users_id.in_(user_ids)).all()
+            for user in user_list:
+                users[user.users_id] = user
+        
+        # Create a map of request_id to MatchHistory entries for this CSR
+        match_map = {}
+        for m in matches:
+            if m.request_id not in match_map:
+                match_map[m.request_id] = []
+            match_map[m.request_id].append(m)
+        
+        # Process all completed requests for this CSR
+        for req_id, req in requests.items():
+            # Get MatchHistory entries for this request and CSR
+            req_matches = match_map.get(req_id, [])
+            
+            # Check if any MatchHistory entry for this CSR has match_status='completed'
+            has_completed_match = any(m.match_status == 'completed' for m in req_matches)
+            
+            # Check if request has feedback (indicates completion)
+            has_feedback = False
+            feedback_data = None
+            try:
+                inspector = inspect(db.engine)
+                if 'feedback' in inspector.get_table_names():
+                    feedback = Feedback.query.filter_by(request_id=req.pin_requests_id).first()
+                    if feedback:
+                        has_feedback = True
+                        feedback_data = {
+                            "rating": feedback.rating,
+                            "comment": feedback.comment,
+                            "anonymous": feedback.anonymous,
+                            "submitted_at": feedback.submitted_at.isoformat() if feedback.submitted_at else None
+                        }
+            except Exception as feedback_err:
+                # Don't rollback here - it will abort the transaction
+                print(f"DEBUG: Error accessing feedback for request {req_id}: {str(feedback_err)}")
+                feedback_data = None
+            
+            # Include if request exists and is completed (check multiple criteria including feedback)
+            # IMPORTANT: Include if request is completed by ANY criteria, not just match_status
+            try:
+                is_completed = (has_completed_match or req.status == 'completed' or req.completed_at is not None or has_feedback)
+                print(f"DEBUG: Request {req_id}: has_completed_match={has_completed_match}, req.status={req.status}, completed_at={req.completed_at}, has_feedback={has_feedback}, is_completed={is_completed}")
+            except Exception as check_err:
+                print(f"DEBUG: Error checking completion status for request {req_id}: {str(check_err)}")
+                is_completed = False
+            
+            if is_completed:
                 try:
-                    category_name = req.category.name if req.category else None
-                except Exception:
-                    db.session.rollback()
+                    # Safely get preferred_time and special_requirements using raw SQL
+                    preferred_time = None
+                    special_requirements = None
+                    try:
+                        result = db.session.execute(
+                            text("SELECT preferred_time, special_requirements FROM pin_requests WHERE pin_requests_id = :id"),
+                            {"id": req.pin_requests_id}
+                        ).first()
+                        if result:
+                            preferred_time = result[0] if result[0] else None
+                            special_requirements = result[1] if result[1] else None
+                    except (OperationalError, ProgrammingError):
+                        # Columns don't exist yet - this is OK
+                        pass
+                    except Exception:
+                        pass
+                    
+                    # Safely access category
                     category_name = None
-                
-                data.append({
-                    "match_id": m.match_history_id,
-                    "request_id": m.request_id,
-                    "title": req.title,
-                    "description": req.description,
-                    "status": req.status,
-                    "urgency": req.urgency,
-                    "location": req.location,
-                    "category": category_name,
-                    "preferred_time": preferred_time,
-                    "preferredTime": preferred_time,
-                    "special_requirements": special_requirements,
-                    "specialRequirements": special_requirements,
-                    "completed_at": req.completed_at.isoformat() if req.completed_at else None,
-                    "feedback_rating": feedback_data["rating"] if feedback_data else None,
-                    "feedback_comment": feedback_data["comment"] if feedback_data else None,
-                    "feedback_anonymous": feedback_data["anonymous"] if feedback_data else None,
-                    "feedback_submitted_at": feedback_data["submitted_at"] if feedback_data else None
-                })
+                    try:
+                        category_name = req.category.name if req.category else None
+                    except Exception as cat_err:
+                        # Don't rollback here - it will abort the transaction
+                        print(f"DEBUG: Error accessing category for request {req_id}: {str(cat_err)}")
+                        category_name = None
+                    
+                    # Safely access requester name from pre-loaded users
+                    requester_name = None
+                    try:
+                        print(f"DEBUG: Looking up user_id={req.user_id} for request {req_id} (title: {req.title})")
+                        user = users.get(req.user_id)
+                        if user:
+                            requester_name = user.name
+                            print(f"DEBUG: Found requester_name={requester_name} for request {req_id}")
+                        else:
+                            print(f"DEBUG: User {req.user_id} not found in pre-loaded users for request {req_id}. Available user_ids: {list(users.keys())}")
+                    except Exception as user_err:
+                        print(f"DEBUG: Error accessing user for request {req_id}: {str(user_err)}")
+                        requester_name = None
+                    
+                    # Safely format completed_at
+                    completed_at_str = None
+                    try:
+                        if req.completed_at and hasattr(req.completed_at, 'isoformat'):
+                            completed_at_str = req.completed_at.isoformat()
+                    except Exception:
+                        completed_at_str = None
+                    
+                    # Use the first MatchHistory entry for this request and CSR
+                    match_entry = req_matches[0] if req_matches else None
+                    
+                    data.append({
+                        "match_id": match_entry.match_history_id if match_entry else None,
+                        "request_id": req_id,
+                        "title": req.title,
+                        "description": req.description,
+                        "status": req.status,
+                        "urgency": req.urgency,
+                        "location": req.location,
+                        "category": category_name,
+                        "requester_name": requester_name,
+                        "preferred_time": preferred_time,
+                        "preferredTime": preferred_time,
+                        "special_requirements": special_requirements,
+                        "specialRequirements": special_requirements,
+                        "completed_at": completed_at_str,
+                        "feedback_rating": feedback_data.get("rating") if feedback_data else None,
+                        "feedback_comment": feedback_data.get("comment") if feedback_data else None,
+                        "feedback_anonymous": feedback_data.get("anonymous") if feedback_data else None,
+                        "feedback_submitted_at": feedback_data.get("submitted_at") if feedback_data else None
+                    })
+                    print(f"DEBUG: Added request {req_id} to completed list")
+                except Exception as append_err:
+                    print(f"DEBUG: Error adding request {req_id} to completed list: {str(append_err)}")
+                    import traceback
+                    traceback.print_exc()
+            else:
+                print(f"DEBUG: Request {req_id} not included - not completed")
 
+        print(f"DEBUG get_completed_requests: Returning {len(data)} completed requests for CSR {csr_id}")
         return jsonify(data), 200
     except Exception as e:
         print(f"Error in get_completed_requests: {str(e)}")
@@ -979,6 +1151,14 @@ def get_shortlisted_requests(csr_id):
                     db.session.rollback()
                     category_name = None
                 
+                # Safely access requester name
+                requester_name = None
+                try:
+                    requester_name = req.pin_user.name if req.pin_user else None
+                except Exception:
+                    db.session.rollback()
+                    requester_name = None
+                
                 data.append({
                     "shortlist_id": s.csr_shortlist_id,
                     "id": req.pin_requests_id,
@@ -988,6 +1168,7 @@ def get_shortlisted_requests(csr_id):
                     "urgency": req.urgency,
                     "location": req.location,
                     "category": category_name,
+                    "requester_name": requester_name,
                     "preferred_time": preferred_time,
                     "preferredTime": preferred_time,
                     "special_requirements": special_requirements,
@@ -1014,8 +1195,25 @@ def get_accepted_requests_global():
         matches = MatchHistory.query.filter(MatchHistory.match_status != 'completed').all()
 
         data = []
+        request_ids = [m.request_id for m in matches]
+        
+        # Pre-load all requests and users to avoid transaction issues
+        requests = {}
+        if request_ids:
+            pin_requests = PinRequest.query.filter(PinRequest.pin_requests_id.in_(request_ids)).all()
+            for req in pin_requests:
+                requests[req.pin_requests_id] = req
+        
+        # Pre-load all users
+        user_ids = list(set([req.user_id for req in requests.values() if req.user_id]))
+        users = {}
+        if user_ids:
+            user_list = User.query.filter(User.users_id.in_(user_ids)).all()
+            for user in user_list:
+                users[user.users_id] = user
+        
         for m in matches:
-            req = PinRequest.query.get(m.request_id)
+            req = requests.get(m.request_id)
             if req:
                 # Safely get preferred_time and special_requirements using raw SQL
                 preferred_time = None
@@ -1038,9 +1236,22 @@ def get_accepted_requests_global():
                 category_name = None
                 try:
                     category_name = req.category.name if req.category else None
-                except Exception:
-                    db.session.rollback()
+                except Exception as cat_err:
+                    # Don't rollback here - it will abort the transaction
+                    print(f"DEBUG: Error accessing category for request {m.request_id}: {str(cat_err)}")
                     category_name = None
+                
+                # Safely access requester name from pre-loaded users
+                requester_name = None
+                try:
+                    user = users.get(req.user_id)
+                    if user:
+                        requester_name = user.name
+                    else:
+                        print(f"DEBUG: User {req.user_id} not found in pre-loaded users for request {m.request_id}")
+                except Exception as user_err:
+                    print(f"DEBUG: Error accessing user for request {m.request_id}: {str(user_err)}")
+                    requester_name = None
                 
                 data.append({
                     "match_id": m.match_history_id,
@@ -1051,6 +1262,7 @@ def get_accepted_requests_global():
                     "urgency": req.urgency,
                     "location": req.location,
                     "category": category_name,
+                    "requester_name": requester_name,
                     "preferred_time": preferred_time,
                     "preferredTime": preferred_time,
                     "special_requirements": special_requirements,
@@ -1074,30 +1286,64 @@ def get_accepted_requests_global():
 @cross_origin()
 def get_completed_requests_global():
     try:
-        matches = MatchHistory.query.filter_by(match_status="completed").all()
+        # Get all MatchHistory entries, then filter by completion criteria
+        # Include requests where either:
+        # 1. MatchHistory match_status is "completed", OR
+        # 2. PinRequest status is "completed", OR
+        # 3. PinRequest has completed_at timestamp (indicating completion), OR
+        # 4. Request has feedback (strong indicator of completion)
+        matches = MatchHistory.query.all()
+        print(f"DEBUG get_completed_requests_global: Found {len(matches)} MatchHistory entries")
 
         data = []
+        request_ids = [m.request_id for m in matches]
+        
+        # Query all PinRequests at once to avoid transaction issues
+        requests = {}
+        if request_ids:
+            pin_requests = PinRequest.query.options(joinedload(PinRequest.category_rel)).filter(PinRequest.pin_requests_id.in_(request_ids)).all()
+            for req in pin_requests:
+                requests[req.pin_requests_id] = req
+        
+        # Pre-load all users to avoid transaction issues
+        user_ids = list(set([req.user_id for req in requests.values() if req.user_id]))
+        users = {}
+        if user_ids:
+            user_list = User.query.filter(User.users_id.in_(user_ids)).all()
+            for user in user_list:
+                users[user.users_id] = user
+        
         for m in matches:
-            req = PinRequest.query.get(m.request_id)
-            if req:
-                # Safely access feedback using direct query
+            # Get request from pre-loaded dictionary
+            req = requests.get(m.request_id)
+            if not req:
+                print(f"DEBUG: Request {m.request_id} not found in pre-loaded requests")
+                continue
+            
+            # Check if request has feedback (indicates completion)
+            has_feedback = False
+            feedback_data = None
+            try:
+                inspector = inspect(db.engine)
+                if 'feedback' in inspector.get_table_names():
+                    feedback = Feedback.query.filter_by(request_id=req.pin_requests_id).first()
+                    if feedback:
+                        has_feedback = True
+                        feedback_data = {
+                            "rating": feedback.rating,
+                            "comment": feedback.comment,
+                            "anonymous": feedback.anonymous,
+                            "submitted_at": feedback.submitted_at.isoformat() if feedback.submitted_at else None
+                        }
+            except Exception as feedback_err:
+                # Don't rollback here - it will abort the transaction
+                print(f"DEBUG: Error accessing feedback for request {m.request_id}: {str(feedback_err)}")
                 feedback_data = None
-                try:
-                    # Check if feedback table exists before querying
-                    inspector = inspect(db.engine)
-                    if 'feedback' in inspector.get_table_names():
-                        feedback = Feedback.query.filter_by(request_id=req.pin_requests_id).first()
-                        if feedback:
-                            feedback_data = {
-                                "rating": feedback.rating,
-                                "comment": feedback.comment,
-                                "anonymous": feedback.anonymous,
-                                "submitted_at": feedback.submitted_at.isoformat() if feedback.submitted_at else None
-                            }
-                except Exception:
-                    db.session.rollback()
-                    feedback_data = None
-
+            
+            # Include if request exists and is completed (check multiple criteria including feedback)
+            is_completed = (m.match_status == 'completed' or req.status == 'completed' or req.completed_at is not None or has_feedback)
+            print(f"DEBUG: Request {m.request_id}: match_status={m.match_status}, req.status={req.status}, completed_at={req.completed_at}, has_feedback={has_feedback}, is_completed={is_completed}")
+            if is_completed:
                 # Safely get preferred_time and special_requirements using raw SQL
                 preferred_time = None
                 special_requirements = None
@@ -1119,9 +1365,22 @@ def get_completed_requests_global():
                 category_name = None
                 try:
                     category_name = req.category.name if req.category else None
-                except Exception:
-                    db.session.rollback()
+                except Exception as cat_err:
+                    # Don't rollback here - it will abort the transaction
+                    print(f"DEBUG: Error accessing category for request {m.request_id}: {str(cat_err)}")
                     category_name = None
+                
+                # Safely access requester name from pre-loaded users
+                requester_name = None
+                try:
+                    user = users.get(req.user_id)
+                    if user:
+                        requester_name = user.name
+                    else:
+                        print(f"DEBUG: User {req.user_id} not found in pre-loaded users for request {m.request_id}")
+                except Exception as user_err:
+                    print(f"DEBUG: Error accessing user for request {m.request_id}: {str(user_err)}")
+                    requester_name = None
                 
                 data.append({
                     "match_id": m.match_history_id,
@@ -1132,17 +1391,22 @@ def get_completed_requests_global():
                     "urgency": req.urgency,
                     "location": req.location,
                     "category": category_name,
+                    "requester_name": requester_name,
                     "preferred_time": preferred_time,
                     "preferredTime": preferred_time,
                     "special_requirements": special_requirements,
                     "specialRequirements": special_requirements,
-                    "completed_at": req.completed_at.isoformat() if req.completed_at else None,
-                    "feedback_rating": feedback_data["rating"] if feedback_data else None,
-                    "feedback_comment": feedback_data["comment"] if feedback_data else None,
-                    "feedback_anonymous": feedback_data["anonymous"] if feedback_data else None,
-                    "feedback_submitted_at": feedback_data["submitted_at"] if feedback_data else None
+                    "completed_at": req.completed_at.isoformat() if (req.completed_at and hasattr(req.completed_at, 'isoformat')) else None,
+                    "feedback_rating": feedback_data.get("rating") if feedback_data else None,
+                    "feedback_comment": feedback_data.get("comment") if feedback_data else None,
+                    "feedback_anonymous": feedback_data.get("anonymous") if feedback_data else None,
+                    "feedback_submitted_at": feedback_data.get("submitted_at") if feedback_data else None
                 })
+                print(f"DEBUG: Added request {m.request_id} to completed list")
+            else:
+                print(f"DEBUG: Request {m.request_id} not included - not completed")
 
+        print(f"DEBUG get_completed_requests_global: Returning {len(data)} completed requests")
         return jsonify(data), 200
     except Exception as e:
         print(f"Error in get_completed_requests_global: {str(e)}")
@@ -1485,6 +1749,7 @@ def delete_pm_category(cat_id):
 @cross_origin()
 def get_pm_requests():
     try:
+        # Get all requests including completed ones
         requests = PinRequest.query.all()
         result = []
         for req in requests:
@@ -1520,10 +1785,11 @@ def get_pm_requests():
                 db.session.rollback()
                 requester_name = None
             
-            # Get assigned CSR (from match_history)
+            # Get assigned CSR (from match_history - look for any match status, prioritize completed/pending)
             assigned_to = None
             try:
-                match = MatchHistory.query.filter_by(request_id=req.pin_requests_id, match_status='pending').first()
+                # First try to find a match (any status), order by matched_at desc to get most recent
+                match = MatchHistory.query.filter_by(request_id=req.pin_requests_id).order_by(MatchHistory.matched_at.desc()).first()
                 if match and match.csr_match:
                     assigned_to = match.csr_match.name
             except Exception:
@@ -1539,6 +1805,7 @@ def get_pm_requests():
                 "urgency": req.urgency,
                 "urgent": req.urgency == 'high',
                 "assignedTo": assigned_to,
+                "requesterName": requester_name,
                 "location": req.location,
                 "preferredTime": preferred_time,
                 "specialRequirements": special_requirements,
@@ -1619,20 +1886,26 @@ def get_pm_analytics():
         ).count()
         
         # Weekly analytics (last 7 days, but only within current month to ensure monthly >= weekly)
+        # Use today_end to ensure we capture all requests created today (consistent with daily)
         weekly_created = PinRequest.query.filter(
-            PinRequest.created_at >= week_start_dt
+            PinRequest.created_at >= week_start_dt,
+            PinRequest.created_at <= today_end
         ).count()
         weekly_closed = PinRequest.query.filter(
             PinRequest.completed_at >= week_start_dt,
+            PinRequest.completed_at <= today_end,
             PinRequest.status == 'completed'
         ).count()
         
         # Monthly analytics (this month from first day to today)
+        # Use today_end to ensure we capture all requests created today (consistent with daily)
         monthly_created = PinRequest.query.filter(
-            PinRequest.created_at >= month_start_dt
+            PinRequest.created_at >= month_start_dt,
+            PinRequest.created_at <= today_end
         ).count()
         monthly_closed = PinRequest.query.filter(
             PinRequest.completed_at >= month_start_dt,
+            PinRequest.completed_at <= today_end,
             PinRequest.status == 'completed'
         ).count()
         
@@ -1689,13 +1962,15 @@ def get_analytics_requests(period, type):
             end_date = today_end
         elif period == 'weekly':
             # Weekly: last 7 days, but only within current month
+            # Use today_end to ensure we capture all requests created today (consistent with daily)
             week_start_raw = today - timedelta(days=6)
             week_start = max(week_start_raw, month_start)
             start_date = datetime.combine(week_start, datetime.min.time())
-            end_date = now
+            end_date = today_end
         elif period == 'monthly':
+            # Use today_end to ensure we capture all requests created today (consistent with daily)
             start_date = datetime.combine(month_start, datetime.min.time())
-            end_date = now
+            end_date = today_end
         else:
             return jsonify({"error": "Invalid period"}), 400
         

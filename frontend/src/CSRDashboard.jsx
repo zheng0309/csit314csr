@@ -50,7 +50,7 @@ const CSRDashboard = () => {
   const [urgentOnly, setUrgentOnly] = useState(false);
 
   // Completed history filters
-  const [histService, setHistService] = useState('all');
+  const [histCategory, setHistCategory] = useState('all');
   const [histFrom, setHistFrom] = useState('');
   const [histTo, setHistTo] = useState('');
 
@@ -85,10 +85,20 @@ const CSRDashboard = () => {
   // ---------- Fetch ----------
   const fetchAll = async () => {
     try {
-      // Get logged-in CSR id
-      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      // Get logged-in CSR id from role-specific localStorage key
+      // This prevents cross-tab interference when multiple dashboards are open
+      const user = JSON.parse(localStorage.getItem('csr_user') || localStorage.getItem('user') || 'null');
+      
+      // Verify user exists (ProtectedRoute handles role verification)
+      if (!user) {
+        console.error('No user found in localStorage');
+        setToast({ open: true, msg: 'Please login again.', severity: 'error' });
+        return;
+      }
+      
       const csrId = user?.users_id;
-      setCurrentUser(user);  // Store user info for display
+      // Set currentUser for display - ProtectedRoute ensures correct role access
+      setCurrentUser(user);
 
       // Use absolute backend URLs to avoid dev-server proxy confusion
       const [
@@ -125,7 +135,19 @@ const CSRDashboard = () => {
         }),
       ]);
 
-      const requestsData = toArray(reqRes?.data);
+      const requestsData = toArray(reqRes?.data).map(r => ({
+        id: r.id ?? r.request_id,
+        title: r.title,
+        description: r.description,
+        status: r.status,
+        urgency: r.urgency,
+        location: r.location,
+        category: r.category,
+        requesterName: r.requester_name,
+        preferredTime: r.preferredTime ?? r.preferred_time,
+        specialRequirements: r.specialRequirements ?? r.special_requirements,
+        urgent: r.urgent,
+      }));
       let acceptedData = toArray(acceptedRes?.data).map(r => ({
         id: r.request_id ?? r.id,
         title: r.title,
@@ -134,10 +156,12 @@ const CSRDashboard = () => {
         urgency: r.urgency,
         location: r.location,
         category: r.category,
+        requesterName: r.requester_name,
         preferredTime: r.preferredTime ?? r.preferred_time,
         specialRequirements: r.specialRequirements ?? r.special_requirements,
         matchedAt: r.matched_at ?? r.matchedAt,
       }));
+      console.log('DEBUG: completedRes?.data:', completedRes?.data);
       let completedData = toArray(completedRes?.data).map(r => ({
         id: r.request_id ?? r.id,
         title: r.title,
@@ -146,6 +170,7 @@ const CSRDashboard = () => {
         urgency: r.urgency,
         location: r.location,
         category: r.category,
+        requesterName: r.requester_name,
         preferredTime: r.preferredTime ?? r.preferred_time,
         specialRequirements: r.specialRequirements ?? r.special_requirements,
         completedAt: r.completed_at ?? r.completedAt,
@@ -154,6 +179,7 @@ const CSRDashboard = () => {
         feedbackAnonymous: r.feedback_anonymous ?? r.feedbackAnonymous,
         feedbackSubmittedAt: r.feedback_submitted_at ?? r.feedbackSubmittedAt,
       }));
+      console.log('DEBUG: completedData after mapping:', completedData);
       let shortlistData = toArray(shortlistRes?.data).map(r => ({
         id: r.id ?? r.request_id,
         title: r.title,
@@ -162,6 +188,7 @@ const CSRDashboard = () => {
         urgency: r.urgency,
         location: r.location,
         category: r.category,
+        requesterName: r.requester_name,
         preferredTime: r.preferredTime ?? r.preferred_time,
         specialRequirements: r.specialRequirements ?? r.special_requirements,
       }));
@@ -177,30 +204,15 @@ const CSRDashboard = () => {
           urgency: r.urgency,
           location: r.location,
           category: r.category,
+          requesterName: r.requester_name,
           preferredTime: r.preferredTime ?? r.preferred_time,
           specialRequirements: r.specialRequirements ?? r.special_requirements,
           matchedAt: r.matched_at ?? r.matchedAt,
         }));
       }
-      if (!completedData.length) {
-        const globalCompleted = await axios.get('http://localhost:5000/api/csr/completed').catch(() => ({ data: [] }));
-        completedData = toArray(globalCompleted?.data).map(r => ({
-          id: r.request_id ?? r.id,
-          title: r.title,
-          description: r.description,
-          status: r.status,
-          urgency: r.urgency,
-          location: r.location,
-          category: r.category,
-          preferredTime: r.preferredTime ?? r.preferred_time,
-          specialRequirements: r.specialRequirements ?? r.special_requirements,
-          completedAt: r.completed_at ?? r.completedAt,
-          feedbackRating: r.feedback_rating ?? r.feedbackRating,
-          feedbackComment: r.feedback_comment ?? r.feedbackComment,
-          feedbackAnonymous: r.feedback_anonymous ?? r.feedbackAnonymous,
-          feedbackSubmittedAt: r.feedback_submitted_at ?? r.feedbackSubmittedAt,
-        }));
-      }
+      // DON'T fall back to global endpoint for completed requests
+      // The CSR-specific endpoint should always be used to ensure each CSR only sees their own completed requests
+      // If completedData is empty, it means this CSR has no completed requests, which is correct
       if (!shortlistData.length) {
         const globalShortlist = await axios.get('http://localhost:5000/api/csr/shortlist').catch(() => ({ data: [] }));
         shortlistData = toArray(globalShortlist?.data).map(r => ({
@@ -211,6 +223,7 @@ const CSRDashboard = () => {
           urgency: r.urgency,
           location: r.location,
           category: r.category,
+          requesterName: r.requester_name,
           preferredTime: r.preferredTime ?? r.preferred_time,
           specialRequirements: r.specialRequirements ?? r.special_requirements,
         }));
@@ -276,6 +289,7 @@ const CSRDashboard = () => {
       // Clear client session and redirect to login
       localStorage.removeItem('token');
       localStorage.removeItem('user');
+      localStorage.removeItem('csr_user'); // Remove role-specific key
       sessionStorage.clear();
       navigate('/', { replace: true });
     }
@@ -344,7 +358,7 @@ const CSRDashboard = () => {
 
   const acceptRequest = async (reqId) => {
     try {
-      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      const user = JSON.parse(localStorage.getItem('csr_user') || localStorage.getItem('user') || 'null');
       await axios.post(`http://localhost:5000/api/requests/${reqId}/accept`, { csr_id: user?.users_id }).catch(() => {});
       setToast({ open: true, msg: 'Request accepted', severity: 'success' });
       await fetchAll();
@@ -356,7 +370,7 @@ const CSRDashboard = () => {
 
   const shortlistRequest = async (reqId) => {
     try {
-      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      const user = JSON.parse(localStorage.getItem('csr_user') || localStorage.getItem('user') || 'null');
       await axios.post(`http://localhost:5000/api/requests/${reqId}/shortlist`, { csr_id: user?.users_id }).catch(() => {});
       setToast({ open: true, msg: 'Added to shortlist', severity: 'success' });
       await fetchAll();
@@ -368,7 +382,7 @@ const CSRDashboard = () => {
 
   const unshortlistRequest = async (reqId) => {
     try {
-      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      const user = JSON.parse(localStorage.getItem('csr_user') || localStorage.getItem('user') || 'null');
       await axios.delete(`http://localhost:5000/api/requests/${reqId}/shortlist`, { data: { csr_id: user?.users_id } }).catch(() => {});
       setToast({ open: true, msg: 'Removed from shortlist', severity: 'info' });
       await fetchAll();
@@ -378,21 +392,10 @@ const CSRDashboard = () => {
     }
   };
 
-  const updateAcceptedStatus = async (reqId, status) => {
-    try {
-      const user = JSON.parse(localStorage.getItem('user') || 'null');
-      await axios.patch(`http://localhost:5000/api/csr/accepted/${reqId}`, { status, csr_id: user?.users_id }).catch(() => {});
-      setToast({ open: true, msg: 'Status updated', severity: 'success' });
-      await fetchAll();
-    } catch (e) {
-      console.error(e);
-      setToast({ open: true, msg: 'Failed to update status', severity: 'error' });
-    }
-  };
 
   const removeMyself = async (reqId) => {
     try {
-      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      const user = JSON.parse(localStorage.getItem('csr_user') || localStorage.getItem('user') || 'null');
       await axios.post(`http://localhost:5000/api/csr/accepted/${reqId}/remove`, { csr_id: user?.users_id }).catch(() => {});
       setToast({ open: true, msg: 'Removed from request', severity: 'info' });
       await fetchAll();
@@ -406,7 +409,7 @@ const CSRDashboard = () => {
 
   const completeRequest = async () => {
     try {
-      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      const user = JSON.parse(localStorage.getItem('csr_user') || localStorage.getItem('user') || 'null');
       await axios.post(`http://localhost:5000/api/csr/accepted/${completeReq.id}/complete`, { note: completionNote, csr_id: user?.users_id }).catch(() => {});
       setToast({ open: true, msg: 'Request completed', severity: 'success' });
       setCompleteOpen(false);
@@ -474,6 +477,17 @@ const CSRDashboard = () => {
             )}
           </Stack>
           <Typography variant="body2" sx={{ opacity: 0.85, mt: 0.5 }}>{r.description}</Typography>
+          {r.requesterName && (
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600, opacity: 0.9 }}>Created by:</Typography>
+              <Chip 
+                label={r.requesterName} 
+                size="small" 
+                variant="outlined"
+                color="primary"
+              />
+            </Stack>
+          )}
           <Stack direction="row" gap={1} sx={{ mt: 1.2, flexWrap: 'wrap' }}>
             {r.category && <Chip label={r.category} size="small" variant="outlined" />}
             {r.urgency && (
@@ -512,20 +526,6 @@ const CSRDashboard = () => {
         {/* Header */}
         <Fade in timeout={800}>
           <Box sx={{ textAlign: 'center', mb: { xs: 3, md: 5 } }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', mb: 2 }}>
-              <Box sx={{
-                px: 3,
-                py: 1,
-                borderRadius: 2,
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-                border: '1px solid rgba(255,255,255,0.2)',
-              }}>
-                <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
-                  {currentUser?.name || currentUser?.username || 'User'}
-                </Typography>
-              </Box>
-            </Box>
             <Typography variant={isMobile ? 'h4' : 'h2'} component="h1" sx={{
               fontWeight: 800,
               background: 'linear-gradient(45deg, #ffffff 30%, rgba(255,255,255,0.8) 90%)',
@@ -659,19 +659,6 @@ const CSRDashboard = () => {
                           <span><IconButton disabled={!r.pin?.email}><MailOutline /></IconButton></span>
                         </Tooltip>
 
-                        {/* Status updates */}
-                        <TextField
-                          select
-                          size="small"
-                          value={r.csrStatus ?? 'in_progress'}
-                          onChange={(e) => updateAcceptedStatus(r.id, e.target.value)}
-                          sx={{ minWidth: 160 }}
-                        >
-                          <MenuItem value="in_progress">In Progress</MenuItem>
-                          <MenuItem value="blocked">Blocked</MenuItem>
-                          <MenuItem value="completed">Mark Completed</MenuItem>
-                        </TextField>
-
                         <Tooltip title="Complete with note">
                           <IconButton color="success" onClick={() => openComplete(r)}>
                             <CheckCircle />
@@ -701,16 +688,15 @@ const CSRDashboard = () => {
                 <Stack direction={{ xs: 'column', md: 'row' }} gap={2}>
                   <TextField
                     select
-                    label="Service Type"
-                    value={histService}
-                    onChange={(e) => setHistService(e.target.value)}
+                    label="Category"
+                    value={histCategory}
+                    onChange={(e) => setHistCategory(e.target.value)}
                     sx={{ minWidth: 220 }}
                   >
-                    <MenuItem value="all">All types</MenuItem>
-                    {/* If you have fixed service types, list them here */}
-                    <MenuItem value="food">Food</MenuItem>
-                    <MenuItem value="transport">Transport</MenuItem>
-                    <MenuItem value="medical">Medical</MenuItem>
+                    <MenuItem value="all">All categories</MenuItem>
+                    {availableCategories.map(cat => (
+                      <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+                    ))}
                   </TextField>
                   <TextField label="From" type="date" InputLabelProps={{ shrink: true }} value={histFrom} onChange={e => setHistFrom(e.target.value)} />
                   <TextField label="To" type="date" InputLabelProps={{ shrink: true }} value={histTo} onChange={e => setHistTo(e.target.value)} />
@@ -718,7 +704,15 @@ const CSRDashboard = () => {
 
                 <Grid container spacing={2}>
                   {completed
-                    .filter(r => histService === 'all' ? true : r.serviceType === histService)
+                    .filter(r => {
+                      if (histCategory === 'all') return true;
+                      // Handle both exact match and trim for safety (same logic as open requests)
+                      const requestCategory = (r.category || '').trim();
+                      const selectedCategory = histCategory.trim();
+                      // Case-insensitive comparison for better matching
+                      const matches = requestCategory.toLowerCase() === selectedCategory.toLowerCase();
+                      return matches;
+                    })
                     .filter(r => {
                       if (!histFrom && !histTo) return true;
                       const d = new Date(r.completedAt);
@@ -744,6 +738,15 @@ const CSRDashboard = () => {
                                 )}
                               </Stack>
                               <Typography variant="body2" sx={{ opacity: 0.85, mt: 0.5 }}>{r.description}</Typography>
+                              <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }}>
+                                <Typography variant="body2" sx={{ fontWeight: 600, opacity: 0.9 }}>Created by:</Typography>
+                                <Chip 
+                                  label={r.requesterName || 'Unknown'} 
+                                  size="small" 
+                                  variant="outlined"
+                                  color="primary"
+                                />
+                              </Stack>
                               <Stack direction="row" gap={1} sx={{ mt: 1.2, flexWrap: 'wrap' }}>
                                 {r.category && <Chip label={r.category} size="small" variant="outlined" />}
                                 {r.location && <Chip label={r.location} size="small" variant="outlined" />}
