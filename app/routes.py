@@ -695,6 +695,25 @@ def get_help_requests_by_user(user_id):
                 preferred_time = None
                 special_requirements = None
 
+            # Find assigned CSR (match not completed)
+            assigned_to = None
+            csr_email = None
+            csr_username = None
+            try:
+                match = MatchHistory.query.filter(
+                    MatchHistory.request_id == req.pin_requests_id,
+                    MatchHistory.match_status != 'completed'
+                ).first()
+                if match:
+                    csr_user = User.query.get(match.csr_id)
+                    if csr_user:
+                        assigned_to = csr_user.name or csr_user.username
+                        csr_email = csr_user.email
+                        csr_username = csr_user.username
+            except Exception:
+                db.session.rollback()
+                assigned_to = None
+
             data.append({
                 "id": req.pin_requests_id,
                 "title": req.title,
@@ -708,6 +727,9 @@ def get_help_requests_by_user(user_id):
                 "preferredTime": preferred_time,  # Also provide camelCase for frontend
                 "special_requirements": special_requirements,
                 "specialRequirements": special_requirements,  # Also provide camelCase for frontend
+                "assigned_to": assigned_to,
+                "csr_email": csr_email,
+                "csr_username": csr_username,
                 "created_at": req.created_at.isoformat() if req.created_at else None,
                 "completed_at": req.completed_at.isoformat() if req.completed_at else None,
                 "feedback_rating": feedback_data["rating"] if feedback_data else None,

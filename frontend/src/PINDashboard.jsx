@@ -22,7 +22,7 @@ const USE_MOCKS = false;
 // =============================================
 const PINDashboard = () => {
   const navigate = useNavigate();
-  const [tab, setTab] = useState(0); // 0 Active, 1 Completed, 2 History
+  const [tab, setTab] = useState(0); // 0 Active, 1 Accepted, 2 Completed, 3 History
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState({ open:false, msg:'', severity:'success' });
@@ -31,6 +31,7 @@ const PINDashboard = () => {
   const [activeRequests, setActiveRequests] = useState([]);
   const [completedRequests, setCompletedRequests] = useState([]);
   const [requestHistory, setRequestHistory] = useState([]);
+  const [acceptedRequests, setAcceptedRequests] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
 
   // Filters and search
@@ -109,6 +110,7 @@ const PINDashboard = () => {
       const normalizedRequests = userRequests.map(r => {
         const backendUrgency = (r.urgency || 'medium').toLowerCase();
         const uiUrgency = backendUrgency === 'high' ? 'urgent' : backendUrgency === 'medium' ? 'normal' : 'low';
+        const status = (r.status || '').toLowerCase();
         return ({
         id: r.id || r.pin_requests_id,
         title: r.title,
@@ -116,12 +118,14 @@ const PINDashboard = () => {
         category: r.category || '',
         urgency: uiUrgency,
         location: r.location || '',
-        status: r.status || 'open',
+        status,
         preferredTime: r.preferred_time || r.preferredTime || '',
         specialRequirements: r.special_requirements || r.specialRequirements || '',
         viewCount: r.view_count || r.viewCount || 0,
         shortlistCount: r.shortlist_count || r.shortlistCount || 0,
         assignedTo: r.assigned_to || r.assignedTo || null,
+        csrEmail: r.csr_email || null,
+        csrUsername: r.csr_username || null,
         contactInfo: r.contact_info || r.contactInfo || null,
         createdAt: r.created_at || r.createdAt,
         updatedAt: r.updated_at || r.updatedAt || r.created_at || r.createdAt,
@@ -134,6 +138,7 @@ const PINDashboard = () => {
       const active = normalizedRequests.filter(r => 
         r.status === 'open' || r.status === 'in-progress' || !r.status || r.status === ''
       );
+      const accepted = normalizedRequests.filter(r => (r.status === 'matched'));
       const completed = normalizedRequests.filter(r => 
         r.status === 'completed' || r.status === 'closed' || r.completedAt
       );
@@ -147,6 +152,7 @@ const PINDashboard = () => {
       
       setActiveRequests(active);
       setCompletedRequests(completed);
+      setAcceptedRequests(accepted);
       setRequestHistory(history);
       
       if (USE_MOCKS) setToast({ open:true, msg:'Mock mode — using sample data', severity:'info' });
@@ -297,7 +303,8 @@ const PINDashboard = () => {
 
   const markAsComplete = async (requestId)=>{
     try{
-      await axios.patch(`http://localhost:5000/api/help-requests/${requestId}`, { status: 'completed' });
+      // Business rule: move from Accepted to Completed by setting status to 'closed'
+      await axios.patch(`http://localhost:5000/api/help-requests/${requestId}`, { status: 'closed' });
       setToast({ open:true, msg:'Request marked as completed', severity:'success' });
       await fetchPINData();
     }catch(e){
@@ -447,6 +454,15 @@ const PINDashboard = () => {
     return list;
   }, [activeRequests, searchQuery, statusFilter]);
 
+  const filteredAcceptedRequests = useMemo(()=>{
+    let list = acceptedRequests || [];
+    if (searchQuery.trim()){
+      const q = searchQuery.toLowerCase();
+      list = list.filter(r => `${r.title} ${r.description} ${r.category}`.toLowerCase().includes(q));
+    }
+    return list;
+  }, [acceptedRequests, searchQuery]);
+
   const filteredCompletedRequests = useMemo(()=>{
     let list = completedRequests;
     if (searchQuery.trim()){
@@ -524,6 +540,7 @@ const PINDashboard = () => {
       <Paper elevation={0} sx={{ borderRadius:3, overflow:'hidden', border:'1px solid rgba(255,255,255,0.12)' }}>
         <Tabs value={tab} onChange={(_,v)=>setTab(v)} variant="scrollable" scrollButtons="auto">
           <Tab label={<Stack direction="row" alignItems="center" spacing={1}><Schedule fontSize="small"/> <span>Active Requests</span> <Badge badgeContent={activeRequests.length} color="primary" sx={{ ml:1 }}/></Stack>} />
+          <Tab label={<Stack direction="row" alignItems="center" spacing={1}><CheckCircle fontSize="small"/> <span>Accepted</span> <Badge badgeContent={(acceptedRequests||[]).length} color="warning" sx={{ ml:1 }}/></Stack>} />
           <Tab label={<Stack direction="row" alignItems="center" spacing={1}><CheckCircle fontSize="small"/> <span>Completed</span> <Badge badgeContent={completedRequests.length} color="success" sx={{ ml:1 }}/></Stack>} />
           <Tab label={<Stack direction="row" alignItems="center" spacing={1}><History fontSize="small"/> <span>Request History</span></Stack>} />
         </Tabs>
@@ -582,8 +599,27 @@ const PINDashboard = () => {
           </Box>
         )}
 
-        {/* COMPLETED REQUESTS TAB */}
+        {/* ACCEPTED REQUESTS TAB */}
         {tab===1 && (
+          <Box sx={{ p:2.5 }}>
+            <Typography variant="h6" sx={{ mb:2 }}>Accepted Requests</Typography>
+            <Grid container spacing={2}>
+              {filteredAcceptedRequests.map(request => (
+                <Grid item xs={12} md={6} key={request.id}>
+                  <AcceptedRequestCard request={request} onPrint={printRequest} />
+                </Grid>
+              ))}
+              {filteredAcceptedRequests.length===0 && (
+                <Box sx={{ p:4, width:'100%', textAlign:'center', opacity:0.8 }}>
+                  <Typography>No accepted requests yet</Typography>
+                </Box>
+              )}
+            </Grid>
+          </Box>
+        )}
+
+        {/* COMPLETED REQUESTS TAB */}
+        {tab===2 && (
           <Box sx={{ p:2.5 }}>
             <Stack direction={{ xs:'column', md:'row' }} spacing={2} sx={{ mb:2 }}>
               <TextField 
@@ -1057,6 +1093,53 @@ function CompletedRequestCard({ request, onFeedback, onPrint, onDuplicate }){
           {request.feedbackSubmitted && (
             <Chip label="Feedback Provided" size="small" color="success" variant="outlined" />
           )}
+        </Stack>
+      </Stack>
+    </Paper>
+  );
+}
+
+// =============================================
+// Accepted Request Card Component
+// =============================================
+function AcceptedRequestCard({ request, onPrint }){
+  return (
+    <Paper variant="outlined" sx={{ p:2, borderRadius:2, height:'100%' }}>
+      <Stack spacing={1.5}>
+        <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+          <Typography variant="h6" sx={{ fontWeight:700 }}>{request.title}</Typography>
+          <Chip label="Accepted" size="small" color="warning" />
+        </Stack>
+
+        <Typography variant="body2" sx={{ opacity:0.9 }}>
+          {request.description?.length > 100 ? `${request.description.substring(0, 100)}...` : request.description}
+        </Typography>
+
+        <Stack spacing={0.5}>
+          {request.category && (
+            <Stack direction="row" spacing={1}>
+              <Typography variant="body2" sx={{ opacity:0.7 }}>Category:</Typography>
+              <Typography variant="body2">{request.category}</Typography>
+            </Stack>
+          )}
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography variant="body2" sx={{ opacity:0.7 }}>Assigned CSR:</Typography>
+            <Typography variant="body2" sx={{ fontWeight:600 }}>{request.assignedTo || '-'}</Typography>
+          </Stack>
+          {(request.csrEmail) && (
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Typography variant="body2" sx={{ opacity:0.7 }}>Contact:</Typography>
+              <Typography variant="body2">{request.csrEmail || '-'}</Typography>
+          </Stack>
+          )}
+        </Stack>
+
+        <Stack direction="row" spacing={1} sx={{ pt:1 }}>
+          <Tooltip title="Print">
+            <IconButton size="small" onClick={()=>onPrint(request)}>
+              <Print/>
+            </IconButton>
+          </Tooltip>
         </Stack>
       </Stack>
     </Paper>
