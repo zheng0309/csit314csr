@@ -681,20 +681,23 @@ def get_help_requests_by_user(user_id):
             try:
                 # Try to query the columns directly - if they don't exist, exception will be caught
                 result = db.session.execute(
-                    text("SELECT preferred_time, special_requirements FROM pin_requests WHERE pin_requests_id = :id"),
+                    text("SELECT preferred_time, special_requirements, view_count FROM pin_requests WHERE pin_requests_id = :id"),
                     {"id": req.pin_requests_id}
                 ).first()
                 if result:
                     preferred_time = result[0] if result[0] else None
                     special_requirements = result[1] if result[1] else None
+                    view_count = result[2] if result[2] is not None else 0
             except (OperationalError, ProgrammingError) as e:
                 # Columns don't exist yet - this is OK
                 preferred_time = None
                 special_requirements = None
+                view_count = 0
             except Exception:
-                # Other errors - just use None
+                # Other errors - just use None/defaults
                 preferred_time = None
                 special_requirements = None
+                view_count = 0
 
             # Find assigned CSR (match not completed)
             assigned_to = None
@@ -741,6 +744,8 @@ def get_help_requests_by_user(user_id):
                 "csr_username": csr_username,
                 "shortlist_count": shortlist_count,
                 "shortlistCount": shortlist_count,  # Also provide camelCase for frontend
+                "view_count": view_count,
+                "viewCount": view_count,
                 "created_at": req.created_at.isoformat() if req.created_at else None,
                 "completed_at": req.completed_at.isoformat() if req.completed_at else None,
                 "feedback_rating": feedback_data["rating"] if feedback_data else None,
@@ -2070,3 +2075,15 @@ def get_analytics_requests(period, type):
         import traceback
         traceback.print_exc()
         return jsonify({"error": f"Failed to fetch analytics requests: {str(e)}"}), 500
+
+@main.route('/api/requests/<int:req_id>/view', methods=['POST'])
+@cross_origin()
+def increment_request_view(req_id):
+    try:
+        # Use raw SQL to avoid ORM cache staleness
+        with db.engine.begin() as conn:
+            conn.execute(text("UPDATE pin_requests SET view_count = COALESCE(view_count,0) + 1 WHERE pin_requests_id = :id"), {"id": req_id})
+        return jsonify({"message": "view recorded"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to record view: {str(e)}"}), 500

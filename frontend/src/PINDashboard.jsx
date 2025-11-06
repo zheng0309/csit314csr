@@ -9,7 +9,7 @@ import {
 import {
   Logout, Refresh, Search, Add, Edit, Delete, Save, Close as CloseIcon,
   Favorite, Phone, Email, Print, CheckCircle,
-  Cancel, Warning, History, Feedback, FilterList, Schedule, ContentCopy
+  Cancel, Warning, History, Feedback, FilterList, Schedule, ContentCopy, Visibility
 } from '@mui/icons-material';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -138,7 +138,8 @@ const PINDashboard = () => {
         createdAt: r.created_at || r.createdAt,
         updatedAt: r.updated_at || r.updatedAt || r.created_at || r.createdAt,
         completedAt: r.completed_at || r.completedAt,
-        feedbackSubmitted: !!(r.feedback_rating || r.feedback_comment || r.feedback_submitted_at)
+        feedbackSubmitted: !!(r.feedback_rating || r.feedback_comment || r.feedback_submitted_at),
+        viewCount: r.view_count || r.viewCount || 0
       });
       });
       
@@ -884,6 +885,12 @@ function RequestCard({ request, onEdit, onComplete, onUrgent, onCancel, onDelete
             />
           )}
           <Chip label={request.status} size="small" color="primary"/>
+          <Chip 
+            label={`${(request.viewCount ?? request.view_count ?? 0)} views`} 
+            size="small" 
+            variant="outlined"
+            icon={<Visibility fontSize="small"/>}
+          />
           <Chip 
             label={`${request.shortlistCount || request.shortlist_count || 0} shortlists`} 
             size="small" 

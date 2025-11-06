@@ -79,6 +79,19 @@ def create_app():
                             print("✅ special_requirements column already exists")
                         else:
                             print(f"⚠️  Could not add special_requirements: {str(e)}")
+
+                # Add view_count if it doesn't exist
+                if 'view_count' not in columns:
+                    try:
+                        with db.engine.begin() as conn:
+                            conn.execute(text("ALTER TABLE pin_requests ADD COLUMN view_count INTEGER DEFAULT 0"))
+                        print("✅ Added view_count column to pin_requests")
+                    except Exception as e:
+                        error_str = str(e).lower()
+                        if 'already exists' in error_str or 'duplicate' in error_str or 'column' in error_str:
+                            print("✅ view_count column already exists")
+                        else:
+                            print(f"⚠️  Could not add view_count: {str(e)}")
         except Exception as e:
             print(f"⚠️  Note: Could not add columns to pin_requests: {str(e)}")
             import traceback

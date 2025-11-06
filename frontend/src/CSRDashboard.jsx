@@ -342,7 +342,10 @@ const CSRDashboard = () => {
   }, [requests, category, urgentOnly, search, availableCategories]);
 
   // ---------- Actions ----------
-  const openDetails = (req) => { setDetailReq(req); setDetailOpen(true); };
+  const openDetails = (req) => { setDetailReq(req); setDetailOpen(true);
+    // Increment view count for analytics (do not block UI on error)
+    axios.post(`http://localhost:5000/api/requests/${req.id}/view`).catch(()=>{});
+  };
 
   const openUsersDialog = async () => {
     try {
