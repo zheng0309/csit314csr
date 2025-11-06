@@ -8,7 +8,7 @@ import {
 } from '@mui/material';
 import {
   Logout, Refresh, Search, Add, Edit, Delete, Save, Close as CloseIcon,
-  Visibility, Favorite, Phone, Email, Print, CheckCircle,
+  Favorite, Phone, Email, Print, CheckCircle,
   Cancel, Warning, History, Feedback, FilterList, Schedule, ContentCopy
 } from '@mui/icons-material';
 import axios from 'axios';
@@ -130,7 +130,6 @@ const PINDashboard = () => {
         status,
         preferredTime: r.preferred_time || r.preferredTime || '',
         specialRequirements: r.special_requirements || r.specialRequirements || '',
-        viewCount: r.view_count || r.viewCount || 0,
         shortlistCount: r.shortlist_count || r.shortlistCount || 0,
         assignedTo: r.assigned_to || r.assignedTo || null,
         csrEmail: r.csr_email || null,
@@ -670,7 +669,6 @@ const PINDashboard = () => {
                     <TableCell>Title</TableCell>
                     <TableCell>Category</TableCell>
                     <TableCell>Status</TableCell>
-                    <TableCell align="right">Views</TableCell>
                     <TableCell align="right">Shortlists</TableCell>
                     <TableCell align="center">Date</TableCell>
                     <TableCell align="right">Actions</TableCell>
@@ -694,14 +692,8 @@ const PINDashboard = () => {
                       </TableCell>
                       <TableCell align="right">
                         <Stack direction="row" alignItems="center" spacing={0.5} justifyContent="flex-end">
-                          <Visibility fontSize="small" sx={{ opacity:0.7 }}/>
-                          <span>{request.viewCount || 0}</span>
-                        </Stack>
-                      </TableCell>
-                      <TableCell align="right">
-                        <Stack direction="row" alignItems="center" spacing={0.5} justifyContent="flex-end">
                           <Favorite fontSize="small" sx={{ opacity:0.7 }}/>
-                          <span>{request.shortlistCount || 0}</span>
+                          <span>{request.shortlistCount || request.shortlist_count || 0}</span>
                         </Stack>
                       </TableCell>
                       <TableCell align="center">{new Date(request.updatedAt).toLocaleDateString()}</TableCell>
@@ -719,7 +711,7 @@ const PINDashboard = () => {
                   ))}
                   {requestHistory.length===0 && (
                     <TableRow>
-                      <TableCell colSpan={7} align="center" sx={{ py:4, opacity:0.8 }}>
+                      <TableCell colSpan={6} align="center" sx={{ py:4, opacity:0.8 }}>
                         No request history available
                       </TableCell>
                     </TableRow>
@@ -893,13 +885,7 @@ function RequestCard({ request, onEdit, onComplete, onUrgent, onCancel, onDelete
           )}
           <Chip label={request.status} size="small" color="primary"/>
           <Chip 
-            label={`${request.viewCount || 0} views`} 
-            size="small" 
-            variant="outlined"
-            icon={<Visibility fontSize="small"/>}
-          />
-          <Chip 
-            label={`${request.shortlistCount || 0} shortlists`} 
+            label={`${request.shortlistCount || request.shortlist_count || 0} shortlists`} 
             size="small" 
             variant="outlined"
             icon={<Favorite fontSize="small"/>}

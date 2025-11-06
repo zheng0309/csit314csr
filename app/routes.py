@@ -715,6 +715,14 @@ def get_help_requests_by_user(user_id):
                 db.session.rollback()
                 assigned_to = None
 
+            # Calculate shortlist count dynamically
+            shortlist_count = 0
+            try:
+                shortlist_count = CSRShortlist.query.filter_by(request_id=req.pin_requests_id).count()
+            except Exception:
+                db.session.rollback()
+                shortlist_count = 0
+
             data.append({
                 "id": req.pin_requests_id,
                 "title": req.title,
@@ -731,6 +739,8 @@ def get_help_requests_by_user(user_id):
                 "assigned_to": assigned_to,
                 "csr_email": csr_email,
                 "csr_username": csr_username,
+                "shortlist_count": shortlist_count,
+                "shortlistCount": shortlist_count,  # Also provide camelCase for frontend
                 "created_at": req.created_at.isoformat() if req.created_at else None,
                 "completed_at": req.completed_at.isoformat() if req.completed_at else None,
                 "feedback_rating": feedback_data["rating"] if feedback_data else None,
