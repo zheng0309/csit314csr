@@ -9,8 +9,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer
 } from 'recharts';
 import {
-  Logout, Refresh, Search, Add, Edit, Delete, Save, Close as CloseIcon,
-  Category as CategoryIcon, CheckCircle, Replay, FilterList, Timeline
+  Logout, Refresh, Search, Add, Edit, Delete, Save,
+  Category as CategoryIcon, FilterList, Timeline
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -55,9 +55,19 @@ export default function PMDashboard(){
 
   const fetchAll = async () => {
     try{
-      // Get logged-in user
-      const user = JSON.parse(localStorage.getItem('user') || 'null');
-      setCurrentUser(user);  // Store user info for display
+      // Get logged-in user from role-specific localStorage key
+      // This prevents cross-tab interference when multiple dashboards are open
+      const user = JSON.parse(localStorage.getItem('pm_user') || localStorage.getItem('user') || 'null');
+      
+      // Verify user exists (ProtectedRoute handles role verification)
+      if (!user) {
+        console.error('No user found in localStorage');
+        setToast({ open: true, msg: 'Please login again.', severity: 'error' });
+        return;
+      }
+      
+      // Set currentUser for display - ProtectedRoute ensures correct role access
+      setCurrentUser(user);
       
       const [catRes, reqRes, anRes] = await Promise.all([
         api.get('/api/pm/categories'),
@@ -84,6 +94,7 @@ export default function PMDashboard(){
 
   const handleLogout = ()=>{
     localStorage.removeItem('user');
+    localStorage.removeItem('pm_user'); // Remove role-specific key
     sessionStorage.clear();
     navigate('/', { replace:true });
   };
@@ -125,11 +136,6 @@ export default function PMDashboard(){
   }, [categories, catQuery, catUsageFilter]);
 
   // ===== Requests =====
-  const setStatus = async (req, next)=>{
-    try{ await api.post(`/api/pm/requests/${req.id}/status`, { status: next }); setToast({ open:true, msg:`Status set to ${next}`, severity:'success' }); await fetchAll(); }
-    catch(e){ console.error(e); setToast({ open:true, msg:'Failed to update status', severity:'error' }); }
-  };
-
   const filteredRequests = useMemo(()=>{
     let list = requests;
     if (reqQuery.trim()){
@@ -162,20 +168,6 @@ export default function PMDashboard(){
   return (
     <Container maxWidth="lg">
       <Box sx={{ mt:3, mb:3, textAlign:'center' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', mb: 2 }}>
-          <Box sx={{
-            px: 3,
-            py: 1,
-            borderRadius: 2,
-            background: 'linear-gradient(135deg, #ed8936 0%, #dd6b20 100%)',
-            boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-            border: '1px solid rgba(255,255,255,0.2)',
-          }}>
-            <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
-              {currentUser?.name || currentUser?.username || 'User'}
-            </Typography>
-          </Box>
-        </Box>
         <Typography variant="h3" sx={{ fontWeight:800, letterSpacing:0.2 }}>
           🛠️ Platform Manager Dashboard {USE_MOCKS && <Chip size="small" color="info" label="Mock Mode" sx={{ ml:1 }} />}
         </Typography>
@@ -271,36 +263,53 @@ export default function PMDashboard(){
               {filteredRequests.map(r => (
                 <Grid item xs={12} md={6} key={r.id}>
                   <Paper variant="outlined" sx={{ p:2, borderRadius:2 }}>
-                    <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
-                      <Box>
-                        <Stack direction="row" alignItems="center" spacing={1}>
-                          <Typography variant="h6" sx={{ fontWeight:700 }}>{r.title}</Typography>
-                          {r.urgent && <Chip color="error" label="Urgent" size="small"/>}
-                        </Stack>
-                        <Stack direction="row" spacing={1} sx={{ mt:1, flexWrap:'wrap' }}>
-                          <Chip label={r.category} size="small" variant="outlined"/>
-                          <Chip label={r.status} size="small"/>
-                          <Chip label={r.assignedTo ? `Assigned: ${r.assignedTo}` : 'Unassigned'} size="small" variant="outlined"/>
-                        </Stack>
-                      </Box>
-                      <Stack direction="row" spacing={1}>
-                        {r.status !== 'closed' && (
-                          <Tooltip title="Close">
-                            <IconButton color="error" onClick={()=>setStatus(r,'closed')}><CloseIcon/></IconButton>
-                          </Tooltip>
-                        )}
-                        {r.status !== 'open' && (
-                          <Tooltip title="Reopen">
-                            <IconButton color="primary" onClick={()=>setStatus(r,'open')}><Replay/></IconButton>
-                          </Tooltip>
-                        )}
-                        {r.status !== 'completed' && (
-                          <Tooltip title="Mark Completed">
-                            <IconButton color="success" onClick={()=>setStatus(r,'completed')}><CheckCircle/></IconButton>
-                          </Tooltip>
+                    <Box>
+                      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb:1 }}>
+                        <Typography variant="h6" sx={{ fontWeight:700 }}>{r.title}</Typography>
+                        {r.urgent && <Chip color="error" label="Urgent" size="small"/>}
+                      </Stack>
+                      <Typography variant="body2" sx={{ mb:1.5, opacity:0.8 }} color="text.secondary">
+                        {r.description}
+                      </Typography>
+                      <Stack direction="row" spacing={1} sx={{ mb:1, flexWrap:'wrap', gap:1 }}>
+                        <Chip label={r.category} size="small" variant="outlined"/>
+                        <Chip 
+                          label={r.status} 
+                          size="small"
+                          color={
+                            r.status === 'completed' ? 'success' :
+                            r.status === 'closed' ? 'default' :
+                            r.status === 'open' ? 'primary' : 'default'
+                          }
+                        />
+                        {r.urgency && (
+                          <Chip 
+                            label={r.urgency} 
+                            size="small"
+                            color={r.urgency === 'high' ? 'error' : r.urgency === 'medium' ? 'warning' : 'default'}
+                          />
                         )}
                       </Stack>
-                    </Stack>
+                      <Stack direction="row" alignItems="center" spacing={1} sx={{ mt:1.5 }}>
+                        <Typography variant="body2" sx={{ fontWeight:600, opacity:0.9 }}>Created by:</Typography>
+                        <Chip 
+                          label={r.requesterName || 'Unknown'} 
+                          size="small" 
+                          variant="outlined"
+                          color="primary"
+                        />
+                      </Stack>
+                      {r.location && (
+                        <Typography variant="caption" sx={{ mt:1, display:'block', opacity:0.7 }}>
+                          📍 {r.location}
+                        </Typography>
+                      )}
+                      {r.createdAt && (
+                        <Typography variant="caption" sx={{ mt:0.5, display:'block', opacity:0.6 }}>
+                          Created: {new Date(r.createdAt).toLocaleString()}
+                        </Typography>
+                      )}
+                    </Box>
                   </Paper>
                 </Grid>
               ))}

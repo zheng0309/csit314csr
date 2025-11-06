@@ -19,7 +19,20 @@ import ViewDetails from "/src/viewDetails.jsx";
 import AdminDashboardV2 from "/src/AdminDashboardV2.jsx";
 
 function ProtectedRoute({ children, allowed }) {
-  const raw = typeof window !== "undefined" ? localStorage.getItem("user") : null;
+  // Check role-specific keys first, then fallback to generic 'user' key
+  // This prevents cross-tab interference when multiple dashboards are open
+  let raw = null;
+  if (typeof window !== "undefined") {
+    if (allowed?.includes("pin")) {
+      raw = localStorage.getItem("pin_user") || localStorage.getItem("user");
+    } else if (allowed?.includes("csr_rep")) {
+      raw = localStorage.getItem("csr_user") || localStorage.getItem("user");
+    } else if (allowed?.includes("platform_manager")) {
+      raw = localStorage.getItem("pm_user") || localStorage.getItem("user");
+    } else {
+      raw = localStorage.getItem("user");
+    }
+  }
   const user = raw ? JSON.parse(raw) : null;
 
   if (!user) {
@@ -124,8 +137,17 @@ function LoginCard() {
       if (res.ok) {
         alert(`✅ Login successful! Welcome ${data.user.name}`);
 
-        // Save user info
+        // Save user info in role-specific localStorage keys to prevent cross-tab interference
         localStorage.setItem("user", JSON.stringify(data.user));
+        if (data.user.role === "pin") {
+          localStorage.setItem("pin_user", JSON.stringify(data.user));
+        } else if (data.user.role === "csr_rep") {
+          localStorage.setItem("csr_user", JSON.stringify(data.user));
+        } else if (data.user.role === "platform_manager") {
+          localStorage.setItem("pm_user", JSON.stringify(data.user));
+        } else if (data.user.role === "admin") {
+          localStorage.setItem("admin_user", JSON.stringify(data.user));
+        }
 
         // ✅ Redirect based on role
         if (data.user.role === "pin") {

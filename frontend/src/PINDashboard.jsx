@@ -80,9 +80,18 @@ const PINDashboard = () => {
   const fetchPINData = async () => {
     try{
       // Get user ID from localStorage
-      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      const user = JSON.parse(localStorage.getItem('pin_user') || localStorage.getItem('user') || 'null');
+      
+      // Verify user exists (ProtectedRoute handles role verification)
+      if (!user) {
+        console.error('No user found in localStorage');
+        setToast({ open: true, msg: 'Please login again.', severity: 'error' });
+        return;
+      }
+      
       const userId = user?.users_id || user?.id;
-      setCurrentUser(user);  // Store user info for display
+      // Set currentUser for display - ProtectedRoute ensures correct role access
+      setCurrentUser(user);
       
       if (!userId) {
         console.warn('User ID not found in localStorage');
@@ -193,6 +202,7 @@ const PINDashboard = () => {
     } finally {
       // Clear client session and redirect to login
       localStorage.removeItem('user');
+      localStorage.removeItem('pin_user'); // Remove role-specific key
       localStorage.removeItem('token');
       sessionStorage.clear();
       navigate('/', { replace: true });
@@ -237,7 +247,7 @@ const PINDashboard = () => {
       }
 
       // Get user ID from localStorage
-      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      const user = JSON.parse(localStorage.getItem('pin_user') || localStorage.getItem('user') || 'null');
       const userId = user?.users_id || user?.id;
       
       if (!userId) {
@@ -337,7 +347,7 @@ const PINDashboard = () => {
 
   const duplicateRequestNow = async (request)=>{
     try{
-      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      const user = JSON.parse(localStorage.getItem('pin_user') || localStorage.getItem('user') || 'null');
       const userId = user?.users_id || user?.id;
       if (!userId) {
         setToast({ open:true, msg:'User not found. Please login again.', severity:'error' });
@@ -500,20 +510,6 @@ const PINDashboard = () => {
   return (
     <Container maxWidth="lg">
       <Box sx={{ mt:3, mb:3, textAlign:'center' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', mb: 2 }}>
-          <Box sx={{
-            px: 3,
-            py: 1,
-            borderRadius: 2,
-            background: 'linear-gradient(135deg, #48bb78 0%, #38a169 100%)',
-            boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-            border: '1px solid rgba(255,255,255,0.2)',
-          }}>
-            <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
-              {currentUser?.name || currentUser?.username || 'User'}
-            </Typography>
-          </Box>
-        </Box>
         <Typography variant="h3" sx={{ fontWeight:800, letterSpacing:0.2 }}>
           🙋‍♂️ Person-In-Need Dashboard {USE_MOCKS && <Chip size="small" color="info" label="Mock Mode" sx={{ ml:1 }} />}
         </Typography>
