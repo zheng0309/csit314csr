@@ -56,8 +56,6 @@ class PinRequest(db.Model):
     status = db.Column(db.String(20), default='open')  # open, matched, closed
     urgency = db.Column(db.String(20), default='medium')  # low, medium, high
     completion_note = db.Column(db.Text)
-    # Note: preferred_time and special_requirements columns are added via ALTER TABLE in app/__init__.py
-    # We don't define them as db.Column here to avoid SQLAlchemy querying them before they exist
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime)
 

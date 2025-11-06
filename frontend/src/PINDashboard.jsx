@@ -660,7 +660,7 @@ const PINDashboard = () => {
         )}
 
         {/* REQUEST HISTORY TAB */}
-        {tab===2 && (
+        {tab===3 && (
           <Box sx={{ p:2.5 }}>
             <Typography variant="h6" sx={{ mb:2 }}>Your Request History</Typography>
             <TableContainer component={Paper} variant="outlined" sx={{ borderRadius:2 }}>

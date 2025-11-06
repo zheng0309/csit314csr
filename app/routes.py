@@ -517,7 +517,7 @@ def update_help_request(request_id):
                 "location": req.location,
                 "user_id": req.user_id,
                 "category": req.category.name if req.category else None,
-                "updated_at": req.created_at.isoformat() if req.created_at else None
+                "updated_at": req.updated_at.isoformat() if req.updated_at else None
             }
         }), 200
     except Exception as e:
@@ -1570,6 +1570,7 @@ def update_accepted_status(req_id):
     data = request.get_json(silent=True) or {}
     csr_id = data.get('csr_id') or (session.get('user', {}).get('users_id') if session.get('user') else None)
     status = data.get('status')
+    
     if not csr_id:
         return jsonify({"error": "csr_id is required"}), 400
     if status not in ['in_progress', 'blocked', 'completed', 'pending']:
@@ -1579,7 +1580,17 @@ def update_accepted_status(req_id):
     if not match:
         return jsonify({"error": "match not found"}), 404
 
-    match.match_status = 'completed' if status == 'completed' else status
+    if status == 'completed':
+        match.match_status = 'completed'
+        
+        # Update the related PinRequest
+        pin_request = PinRequest.query.get(req_id)
+        if pin_request:
+            pin_request.status = 'closed'
+            pin_request.completed_at = datetime.utcnow()
+    else:
+        match.match_status = status
+
     db.session.commit()
 
     return jsonify({"message": "updated"}), 200
