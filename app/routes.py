@@ -726,6 +726,17 @@ def get_help_requests_by_user(user_id):
                 db.session.rollback()
                 shortlist_count = 0
 
+            # Get completion note - ensure it's a string
+            completion_note_value = req.completion_note
+            if completion_note_value is None:
+                completion_note_value = ""
+            else:
+                completion_note_value = str(completion_note_value).strip()
+            
+            # Debug: Log completion note for completed requests
+            if req.status == 'completed':
+                print(f"DEBUG get_help_requests_by_user: Request {req.pin_requests_id} (status: {req.status}) - completion_note: '{completion_note_value}' (type: {type(req.completion_note)})")
+            
             data.append({
                 "id": req.pin_requests_id,
                 "title": req.title,
@@ -734,7 +745,8 @@ def get_help_requests_by_user(user_id):
                 "location": req.location,
                 "status": req.status,
                 "urgency": req.urgency,
-                "completion_note": req.completion_note,
+                "completion_note": completion_note_value,
+                "completionNote": completion_note_value,  # Also provide camelCase for frontend
                 "preferred_time": preferred_time,
                 "preferredTime": preferred_time,  # Also provide camelCase for frontend
                 "special_requirements": special_requirements,
@@ -1016,6 +1028,28 @@ def get_completed_requests(csr_id):
             for user in user_list:
                 users[user.users_id] = user
         
+        # Pre-load all feedback records for all completed requests to avoid transaction issues
+        feedback_map = {}
+        try:
+            inspector = inspect(db.engine)
+            if 'feedback' in inspector.get_table_names():
+                # Query all feedback records for all completed requests in one query
+                feedback_list = Feedback.query.filter(
+                    Feedback.request_id.in_(list(all_completed_request_ids))
+                ).all()
+                for feedback in feedback_list:
+                    feedback_map[feedback.request_id] = {
+                        "rating": feedback.rating,
+                        "comment": feedback.comment,
+                        "anonymous": feedback.anonymous,
+                        "submitted_at": feedback.submitted_at.isoformat() if feedback.submitted_at else None
+                    }
+                print(f"DEBUG get_completed_requests: Pre-loaded {len(feedback_map)} feedback records")
+        except Exception as feedback_load_err:
+            print(f"DEBUG: Error pre-loading feedback: {str(feedback_load_err)}")
+            import traceback
+            traceback.print_exc()
+        
         # Create a map of request_id to MatchHistory entries for this CSR
         match_map = {}
         for m in matches:
@@ -1031,25 +1065,9 @@ def get_completed_requests(csr_id):
             # Check if any MatchHistory entry for this CSR has match_status='completed'
             has_completed_match = any(m.match_status == 'completed' for m in req_matches)
             
-            # Check if request has feedback (indicates completion)
-            has_feedback = False
-            feedback_data = None
-            try:
-                inspector = inspect(db.engine)
-                if 'feedback' in inspector.get_table_names():
-                    feedback = Feedback.query.filter_by(request_id=req.pin_requests_id).first()
-                    if feedback:
-                        has_feedback = True
-                        feedback_data = {
-                            "rating": feedback.rating,
-                            "comment": feedback.comment,
-                            "anonymous": feedback.anonymous,
-                            "submitted_at": feedback.submitted_at.isoformat() if feedback.submitted_at else None
-                        }
-            except Exception as feedback_err:
-                # Don't rollback here - it will abort the transaction
-                print(f"DEBUG: Error accessing feedback for request {req_id}: {str(feedback_err)}")
-                feedback_data = None
+            # Get feedback from pre-loaded dictionary
+            feedback_data = feedback_map.get(req_id)
+            has_feedback = feedback_data is not None
             
             # Include if request exists and is completed (check multiple criteria including feedback)
             # IMPORTANT: Include if request is completed by ANY criteria, not just match_status
@@ -1350,6 +1368,28 @@ def get_completed_requests_global():
             for user in user_list:
                 users[user.users_id] = user
         
+        # Pre-load all feedback records for all requests to avoid transaction issues
+        feedback_map = {}
+        try:
+            inspector = inspect(db.engine)
+            if 'feedback' in inspector.get_table_names() and request_ids:
+                # Query all feedback records for all requests in one query
+                feedback_list = Feedback.query.filter(
+                    Feedback.request_id.in_(request_ids)
+                ).all()
+                for feedback in feedback_list:
+                    feedback_map[feedback.request_id] = {
+                        "rating": feedback.rating,
+                        "comment": feedback.comment,
+                        "anonymous": feedback.anonymous,
+                        "submitted_at": feedback.submitted_at.isoformat() if feedback.submitted_at else None
+                    }
+                print(f"DEBUG get_completed_requests_global: Pre-loaded {len(feedback_map)} feedback records")
+        except Exception as feedback_load_err:
+            print(f"DEBUG: Error pre-loading feedback: {str(feedback_load_err)}")
+            import traceback
+            traceback.print_exc()
+        
         for m in matches:
             # Get request from pre-loaded dictionary
             req = requests.get(m.request_id)
@@ -1357,25 +1397,9 @@ def get_completed_requests_global():
                 print(f"DEBUG: Request {m.request_id} not found in pre-loaded requests")
                 continue
             
-            # Check if request has feedback (indicates completion)
-            has_feedback = False
-            feedback_data = None
-            try:
-                inspector = inspect(db.engine)
-                if 'feedback' in inspector.get_table_names():
-                    feedback = Feedback.query.filter_by(request_id=req.pin_requests_id).first()
-                    if feedback:
-                        has_feedback = True
-                        feedback_data = {
-                            "rating": feedback.rating,
-                            "comment": feedback.comment,
-                            "anonymous": feedback.anonymous,
-                            "submitted_at": feedback.submitted_at.isoformat() if feedback.submitted_at else None
-                        }
-            except Exception as feedback_err:
-                # Don't rollback here - it will abort the transaction
-                print(f"DEBUG: Error accessing feedback for request {m.request_id}: {str(feedback_err)}")
-                feedback_data = None
+            # Get feedback from pre-loaded dictionary
+            feedback_data = feedback_map.get(m.request_id)
+            has_feedback = feedback_data is not None
             
             # Include if request exists and is completed (check multiple criteria including feedback)
             is_completed = (m.match_status == 'completed' or req.status == 'completed' or req.completed_at is not None or has_feedback)
@@ -1630,27 +1654,42 @@ def remove_self_from_request(req_id):
 @main.route('/api/csr/accepted/<int:req_id>/complete', methods=['POST'])
 @cross_origin()
 def complete_request_action(req_id):
-    data = request.get_json(silent=True) or {}
-    csr_id = data.get('csr_id') or (session.get('user', {}).get('users_id') if session.get('user') else None)
-    note = data.get('note')
-    if not csr_id:
-        return jsonify({"error": "csr_id is required"}), 400
+    try:
+        data = request.get_json(silent=True) or {}
+        csr_id = data.get('csr_id') or (session.get('user', {}).get('users_id') if session.get('user') else None)
+        note = data.get('note', '').strip() if data.get('note') else ''
+        
+        if not csr_id:
+            return jsonify({"error": "csr_id is required"}), 400
 
-    match = MatchHistory.query.filter_by(csr_id=csr_id, request_id=req_id).first()
-    req = PinRequest.query.get(req_id)
-    if not match or not req:
-        return jsonify({"error": "not found"}), 404
+        match = MatchHistory.query.filter_by(csr_id=csr_id, request_id=req_id).first()
+        req = PinRequest.query.get(req_id)
+        if not match or not req:
+            return jsonify({"error": "not found"}), 404
 
-    match.match_status = 'completed'
-    req.status = 'completed'
-    req.completed_at = req.completed_at or db.func.now()
-    if note:
-        req.completion_note = note
-    db.session.commit()
-
-    return jsonify({"message": "completed"}), 200
-
-    return jsonify(data), 200
+        match.match_status = 'completed'
+        req.status = 'completed'
+        req.completed_at = req.completed_at or datetime.utcnow()
+        
+        # Always set completion_note, even if empty (to clear previous notes if needed)
+        req.completion_note = note if note else None
+        
+        db.session.commit()
+        
+        # Debug: Log completion note save
+        print(f"DEBUG complete_request_action: Request {req_id} completed by CSR {csr_id}")
+        print(f"DEBUG complete_request_action: Completion note saved: '{req.completion_note}' (type: {type(req.completion_note)})")
+        
+        return jsonify({
+            "message": "completed",
+            "completion_note": req.completion_note if req.completion_note else ""
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error in complete_request_action: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to complete request: {str(e)}"}), 500
 
 # ---------------------------------
 # Get Categories
@@ -2081,9 +2120,16 @@ def get_analytics_requests(period, type):
 def increment_request_view(req_id):
     try:
         # Use raw SQL to avoid ORM cache staleness
-        with db.engine.begin() as conn:
-            conn.execute(text("UPDATE pin_requests SET view_count = COALESCE(view_count,0) + 1 WHERE pin_requests_id = :id"), {"id": req_id})
+        # Check if view_count column exists first
+        inspector = inspect(db.engine)
+        columns = [col['name'] for col in inspector.get_columns('pin_requests')]
+        
+        if 'view_count' in columns:
+            with db.engine.begin() as conn:
+                conn.execute(text("UPDATE pin_requests SET view_count = COALESCE(view_count,0) + 1 WHERE pin_requests_id = :id"), {"id": req_id})
+        # If column doesn't exist, just return success (view count is optional)
         return jsonify({"message": "view recorded"}), 200
     except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": f"Failed to record view: {str(e)}"}), 500
+        # Don't fail the request if view count update fails - it's not critical
+        print(f"Warning: Could not increment view count for request {req_id}: {str(e)}")
+        return jsonify({"message": "view recorded"}), 200

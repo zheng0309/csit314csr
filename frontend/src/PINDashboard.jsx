@@ -120,6 +120,21 @@ const PINDashboard = () => {
         const backendUrgency = (r.urgency || 'medium').toLowerCase();
         const uiUrgency = backendUrgency === 'high' ? 'urgent' : backendUrgency === 'medium' ? 'normal' : 'low';
         const status = (r.status || '').toLowerCase();
+        
+        // Get completion note - handle both formats and ensure it's a string
+        const completionNoteValue = r.completion_note || r.completionNote || null;
+        let completionNote = '';
+        if (completionNoteValue) {
+          completionNote = String(completionNoteValue).trim();
+        }
+        
+        // Debug: Log completion note for completed requests (only if note exists)
+        if (status === 'completed' && completionNote) {
+          console.log('✅ PIN Dashboard: Found completion note for request', r.id || r.pin_requests_id, ':', completionNote.substring(0, 50) + '...');
+        } else if (status === 'completed' && !completionNote) {
+          console.log('⚠️ PIN Dashboard: Request', r.id || r.pin_requests_id, 'is completed but has no completion note');
+        }
+        
         return ({
         id: r.id || r.pin_requests_id,
         title: r.title,
@@ -130,6 +145,7 @@ const PINDashboard = () => {
         status,
         preferredTime: r.preferred_time || r.preferredTime || '',
         specialRequirements: r.special_requirements || r.specialRequirements || '',
+        completionNote: completionNote,
         shortlistCount: r.shortlist_count || r.shortlistCount || 0,
         assignedTo: r.assigned_to || r.assignedTo || null,
         csrEmail: r.csr_email || null,
@@ -1006,6 +1022,11 @@ function RequestCard({ request, onEdit, onComplete, onUrgent, onCancel, onDelete
 // Completed Request Card Component
 // =============================================
 function CompletedRequestCard({ request, onFeedback, onPrint, onDuplicate }){
+  // Check if completion note should be displayed
+  const hasCompletionNote = request.completionNote && 
+                            typeof request.completionNote === 'string' && 
+                            request.completionNote.trim().length > 0;
+  
   return (
     <Paper variant="outlined" sx={{ p:2, borderRadius:2, height:'100%' }}>
       <Stack spacing={1.5}>
@@ -1053,6 +1074,35 @@ function CompletedRequestCard({ request, onFeedback, onPrint, onDuplicate }){
             <Typography variant="body2" sx={{ opacity:0.7 }}>Helped by:</Typography>
             <Typography variant="body2" sx={{ fontWeight:600 }}>{request.assignedTo}</Typography>
           </Stack>
+        )}
+
+        {/* Completion Note Section - Show above Feedback button */}
+        {hasCompletionNote && (
+          <Box sx={{ 
+            p: 2, 
+            borderRadius: 1.5, 
+            bgcolor: 'rgba(25, 118, 210, 0.1)', 
+            border: '1px solid rgba(25, 118, 210, 0.3)',
+            mt: 1.5,
+            mb: 1
+          }}>
+            <Stack spacing={1}>
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <CheckCircle sx={{ fontSize: 20, color: 'primary.main' }} />
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'primary.main' }}>
+                  Completion Note from CSR
+                </Typography>
+              </Stack>
+              <Typography variant="body2" sx={{ 
+                whiteSpace: 'pre-wrap', 
+                opacity: 0.95, 
+                pl: 3,
+                lineHeight: 1.6
+              }}>
+                {request.completionNote.trim()}
+              </Typography>
+            </Stack>
+          </Box>
         )}
 
         <Stack direction="row" spacing={1} sx={{ pt:1 }}>
