@@ -51,7 +51,7 @@ export default function PMDashboard(){
 
   // Request filters
   const [reqQuery, setReqQuery] = useState('');
-  const [reqStatus, setReqStatus] = useState('all'); // all/open/closed/completed/unassigned
+  const [reqStatus, setReqStatus] = useState('all'); // all/open/closed/matched
 
   const fetchAll = async () => {
     try{
@@ -143,8 +143,12 @@ export default function PMDashboard(){
       list = list.filter(r => `${r.title} ${r.category} ${r.status}`.toLowerCase().includes(q));
     }
     if (reqStatus !== 'all'){
-      if (reqStatus === 'unassigned') list = list.filter(r => !r.assignedTo && r.status==='open');
-      else list = list.filter(r => r.status === reqStatus);
+      if (reqStatus === 'matched') {
+        // Matched: requests that have an assigned CSR but are not completed/closed
+        list = list.filter(r => r.assignedTo && r.status !== 'completed' && r.status !== 'closed');
+      } else {
+        list = list.filter(r => r.status === reqStatus);
+      }
     }
     return list;
   }, [requests, reqQuery, reqStatus]);
@@ -254,8 +258,7 @@ export default function PMDashboard(){
                 <MenuItem value="all">All</MenuItem>
                 <MenuItem value="open">Open</MenuItem>
                 <MenuItem value="closed">Closed</MenuItem>
-                <MenuItem value="completed">Completed</MenuItem>
-                <MenuItem value="unassigned">Unassigned</MenuItem>
+                <MenuItem value="matched">Matched</MenuItem>
               </TextField>
             </Stack>
 
