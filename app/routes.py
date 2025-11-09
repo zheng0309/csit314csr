@@ -103,6 +103,10 @@ def get_requests():
 @main.route('/api/admin/users', methods=['GET'])
 @cross_origin()
 def admin_get_users():
+    # Require admin session
+    if session.get('user', {}).get('role') != 'admin':
+        return jsonify({"error": "admin privileges required"}), 403
+
     try:
         users = User.query.all()
         # Normalize role labels to canonical values for frontend
@@ -131,6 +135,10 @@ def admin_get_users():
 @main.route('/api/admin/user-stats', methods=['GET'])
 @cross_origin()
 def admin_user_stats():
+    # Require admin session
+    if session.get('user', {}).get('role') != 'admin':
+        return jsonify({"error": "admin privileges required"}), 403
+
     try:
         # Count by roles with normalization handled via SQL OR Python fallback
         # Simple approach: fetch counts by raw values that might exist
@@ -156,13 +164,17 @@ def admin_user_stats():
 @main.route('/api/admin/users', methods=['POST'])
 @cross_origin(origins=["http://localhost:5173"], supports_credentials=True)
 def admin_create_user():
+    # Require admin session
+    if session.get('user', {}).get('role') != 'admin':
+        return jsonify({"error": "admin privileges required"}), 403
+
     try:
         data = request.get_json() or {}
         required = ['name', 'email', 'role', 'password']
         if any(not data.get(k) for k in required):
             return jsonify({"error": "name, email, role, password are required"}), 400
 
-        # Normalize role
+        # Role normalization map (accept common variants)
         role_map = {
             "pin": "pin", "PIN": "pin",
             "csr_rep": "csr_rep", "CSR Rep": "csr_rep", "CSR": "csr_rep",
@@ -171,19 +183,44 @@ def admin_create_user():
         }
         normalized_role = role_map.get(data.get('role'), data.get('role'))
 
-        # Check email unique
-        exists = User.query.filter((User.email == data['email'])).first()
+        # Normalize email to lowercase for storage and comparison
+        provided_email = (data.get('email') or '').strip()
+        normalized_email = provided_email.lower()
+
+        # Case-insensitive email uniqueness check
+        exists = User.query.filter(func.lower(User.email) == normalized_email).first()
         if exists:
             return jsonify({"error": "User with same email already exists"}), 409
 
-        # Generate username automatically based on next users_id
-        next_id = (db.session.query(func.max(User.users_id)).scalar() or 0) + 1
-        generated_username = str(next_id)
+        # Role-aware username base
+        # Count existing users of the same normalized role (case-insensitive)
+        role_count = User.query.filter(func.lower(User.role) == (normalized_role or '').lower()).count()
+        next_seq = role_count + 1
+
+        if (normalized_role or '').lower() == 'pin':
+            base = f"pin{next_seq:03d}"
+        elif (normalized_role or '').lower() in ('csr_rep', 'csr'):
+            base = f"csr{next_seq:03d}"
+        elif (normalized_role or '').lower() in ('platform_manager', 'platform manager', 'pm'):
+            base = f"manager{next_seq}"
+        elif (normalized_role or '').lower() == 'admin':
+            base = f"admin{next_seq}"
+        else:
+            # Fallback to numeric user id sequencing
+            next_id = (db.session.query(func.max(User.users_id)).scalar() or 0) + 1
+            base = f"user{next_id}"
+
+        # Ensure username uniqueness by appending suffix when necessary
+        username = base
+        suffix = 1
+        while User.query.filter_by(username=username).first():
+            suffix += 1
+            username = f"{base}_{suffix}"
 
         user = User(
-            username=generated_username,
-            name=data['name'],
-            email=data['email'],
+            username=username,
+            name=data['name'].strip(),
+            email=normalized_email,
             role=normalized_role,
             password=data['password']
         )
@@ -205,6 +242,10 @@ def admin_create_user():
 @main.route('/api/admin/users/<int:user_id>', methods=['PATCH'])
 @cross_origin(origins=["http://localhost:5173"], supports_credentials=True)
 def admin_update_user(user_id):
+    # Require admin session
+    if session.get('user', {}).get('role') != 'admin':
+        return jsonify({"error": "admin privileges required"}), 403
+
     try:
         data = request.get_json() or {}
         user = User.query.get(user_id)

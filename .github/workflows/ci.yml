@@ -22,7 +22,6 @@ jobs:
           POSTGRES_USER: csruser
           POSTGRES_PASSWORD: csrpass
           POSTGRES_DB: csrdb
-        ports: ["5432:5432"]
         options: >-
           --health-cmd="pg_isready -U csruser"
           --health-interval=10s
@@ -41,6 +40,31 @@ jobs:
       - name: Install backend dependencies
         run: |
           pip install -r requirements.txt
+
+      - name: Reset test database (drop & recreate public schema)
+        # Ensure postgres client exists, then reset schema to guarantee a clean DB for tests
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: csruser
+          DB_PASS: csrpass
+          DB_NAME: csrdb
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y postgresql-client
+          # Use PGPASSWORD to provide password non-interactively
+          PGPASSWORD=${DB_PASS} psql -h ${DB_HOST} -U ${DB_USER} -d ${DB_NAME} -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+
+      - name: Initialize DB via app (create tables & columns)
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: csruser
+          DB_PASS: csrpass
+          DB_NAME: csrdb
+          SECRET_KEY: testing-secret
+        run: |
+          python -c "from app import create_app; create_app()"
 
       - name: Run Flask import check (smoke test)
         env:
@@ -77,7 +101,7 @@ jobs:
         env:
           CI: true
         run: |
-          $env:CI = 'true'; npm test -- --watchAll=false
+          npm test -- --watchAll=false
 
       - name: Build frontend
         working-directory: frontend
