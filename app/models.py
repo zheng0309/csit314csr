@@ -73,6 +73,24 @@ class CsrShortlist(db.Model):
     request_id = db.Column(db.Integer, db.ForeignKey('pin_requests.pin_requests_id'))
     shortlisted_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+class Feedback(db.Model):
+    __tablename__ = 'feedback'
+
+    feedback_id = db.Column(db.Integer, primary_key=True)
+    request_id = db.Column(db.Integer, db.ForeignKey('pin_requests.pin_requests_id'))
+    rating = db.Column(db.Integer)
+    comment = db.Column(db.Text)
+    anonymous = db.Column(db.Boolean, default=False)
+    submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Legacy property for compatibility
+    @property
+    def id(self):
+        return self.feedback_id
+
+# Provide backward-compatible alias: some modules import CSRShortlist (all-caps 'CSR')
+# while the class here is named `CsrShortlist`. Export the expected name.
+CSRShortlist = CsrShortlist
 class Report(db.Model):
     __tablename__ = 'reports'
     
