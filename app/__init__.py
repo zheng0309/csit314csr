@@ -14,7 +14,9 @@ def create_app():
 
     app = Flask(__name__)
     # Single CORS configuration for the whole app (dev: Vite on 5173)
-    CORS(app, resources={r"/*": {"origins": ["http://localhost:5173"]}}, supports_credentials=True)
+    #  Single CORS configuration for the whole app. Read allowed frontend origin from env
+    frontend_origin = os.getenv('FRONTEND_ORIGIN') or os.getenv('VITE_API_ORIGIN') or os.getenv('REACT_APP_FRONTEND') or 'http://localhost:5173'
+    CORS(app, resources={r"/*": {"origins": [frontend_origin]}}, supports_credentials=True)
 
     #  PostgreSQL connection using .env values
     app.config['SQLALCHEMY_DATABASE_URI'] = (

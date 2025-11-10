@@ -10,7 +10,12 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Set to "true" to allow the publish job to run when manually dispatching the workflow.'
+        required: false
+        default: 'false'
 
 jobs:
   backend-test:
@@ -46,32 +51,56 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y postgresql-client
 
+      - name: Debug: diagnose Postgres network/resolution
+        run: |
+          echo "=== DNS resolution for 'postgres' ==="
+          python - <<'PY'
+import socket
+try:
+    print(socket.getaddrinfo('postgres', None))
+except Exception as e:
+    print('resolve failed:', e)
+PY
+
+          echo "=== Listening TCP sockets (grep 5432) ==="
+          ss -lntp || true
+
+          echo "=== pg_isready checks ==="
+          pg_isready -h postgres -p 5432 -U csruser || true
+          pg_isready -h localhost -p 5432 -U csruser || true
+
+          echo "=== Environment variables (partial) ==="
+          env | grep -E 'POSTGRES|PG|DB|HOST' || true
+
       - name: Wait for Postgres, reset public schema and seed database
         env:
           PGPASSWORD: csrpass
+          PGHOST: postgres
+          PGPORT: 5432
         run: |
-          echo "Waiting for Postgres to be ready (up to 60s)"
-          for i in {1..30}; do
-            if pg_isready -h localhost -p 5432 -U csruser >/dev/null 2>&1; then
+          echo "Using PGHOST=$PGHOST PGPORT=$PGPORT"
+          echo "Waiting for Postgres to be ready (up to 120s)"
+          for i in {1..60}; do
+            if pg_isready -h "$PGHOST" -p "$PGPORT" -U csruser >/dev/null 2>&1; then
               echo "Postgres is ready"
               break
             fi
-            echo "Postgres not ready yet ($i/30)... sleeping 2s"
+            echo "Postgres not ready yet ($i/60)... sleeping 2s"
             sleep 2
           done
 
           # Quick connectivity check
-          psql -h localhost -U csruser -d csrdb -c "SELECT 1;"
+          psql -h "$PGHOST" -p "$PGPORT" -U csruser -d csrdb -c "SELECT 1;"
 
           echo "Resetting public schema"
-          psql -h localhost -U csruser -d csrdb -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+          psql -h "$PGHOST" -p "$PGPORT" -U csruser -d csrdb -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 
           echo "Seeding DB from seed_data.sql (non-fatal errors may be ignored)"
-          psql -h localhost -U csruser -d csrdb -f seed_data.sql || true
+          psql -h "$PGHOST" -p "$PGPORT" -U csruser -d csrdb -f seed_data.sql || true
 
       - name: Run Flask import check (smoke test)
         env:
-          DB_HOST: localhost
+          DB_HOST: postgres
           DB_PORT: 5432
           DB_USER: csruser
           DB_PASS: csrpass
@@ -114,9 +143,11 @@ jobs:
 
   publish:
     name: Publish container (main only)
-    # Only publish on direct pushes to main. PRs will not publish images to GHCR by default.
-    # You can trigger manual publish via the workflow_dispatch event below.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Publish automatically on direct pushes to main, or when manually dispatching
+    # with the `publish` input set to 'true'. This prevents accidental publishes from manual runs.
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true')
     runs-on: ubuntu-latest
     needs: [backend-test, frontend-test]
     steps:

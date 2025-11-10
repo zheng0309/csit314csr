@@ -36,7 +36,9 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - REACT_APP_API_URL=http://localhost:5000
+      # Use service DNS name for backend when running in Docker Compose
+      - REACT_APP_API_URL=http://web:5000
+      - VITE_API_URL=http://web:5000
     volumes:
       - ./frontend:/app
       - /app/node_modules

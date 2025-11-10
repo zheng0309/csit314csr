@@ -1872,23 +1872,14 @@ def get_pm_requests():
                 db.session.rollback()
                 requester_name = None
             
-            # Get assigned CSR (from match_history - look for accepted/pending matches, not cancelled)
+            # Get assigned CSR (from match_history - look for any match status, prioritize completed/pending)
             assigned_to = None
             try:
-                # Find the most recent match that's not cancelled (pending, completed, etc.)
-                # This represents the CSR who accepted the request
-                match = MatchHistory.query.filter(
-                    MatchHistory.request_id == req.pin_requests_id,
-                    MatchHistory.match_status != 'cancelled'
-                ).order_by(MatchHistory.matched_at.desc()).first()
-                
-                if match and match.csr_id:
-                    # Explicitly query the CSR user to get their name
-                    csr_user = User.query.get(match.csr_id)
-                    if csr_user:
-                        assigned_to = csr_user.name or csr_user.username
-            except Exception as e:
-                print(f"DEBUG get_pm_requests: Error getting assigned CSR for request {req.pin_requests_id}: {str(e)}")
+                # First try to find a match (any status), order by matched_at desc to get most recent
+                match = MatchHistory.query.filter_by(request_id=req.pin_requests_id).order_by(MatchHistory.matched_at.desc()).first()
+                if match and match.csr_match:
+                    assigned_to = match.csr_match.name
+            except Exception:
                 db.session.rollback()
                 assigned_to = None
             
