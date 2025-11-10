@@ -28,6 +28,8 @@ jobs:
           POSTGRES_USER: csruser
           POSTGRES_PASSWORD: csrpass
           POSTGRES_DB: csrdb
+        ports:
+          - 5432:5432
         options: >-
           --health-cmd="pg_isready -U csruser"
           --health-interval=10s
@@ -45,37 +47,37 @@ jobs:
 
       - name: Install backend dependencies (including test tools)
         run: |
-          pip install -r requirements.txt pytest
+          pip install -r requirements.txt
 
       - name: Install psql client
         run: |
           sudo apt-get update && sudo apt-get install -y postgresql-client
 
-      - name: Debug: diagnose Postgres network/resolution
+      - name: Debug - diagnose Postgres network/resolution
         run: |
           echo "=== DNS resolution for 'postgres' ==="
-          python - <<'PY'
-import socket
-try:
-    print(socket.getaddrinfo('postgres', None))
-except Exception as e:
-    print('resolve failed:', e)
-PY
-
+          python3 -c "
+          import socket
+          try:
+              print(socket.getaddrinfo('postgres', None))
+          except Exception as e:
+              print('resolve failed:', e)
+          "
+          
           echo "=== Listening TCP sockets (grep 5432) ==="
           ss -lntp || true
-
+          
           echo "=== pg_isready checks ==="
           pg_isready -h postgres -p 5432 -U csruser || true
           pg_isready -h localhost -p 5432 -U csruser || true
-
+          
           echo "=== Environment variables (partial) ==="
           env | grep -E 'POSTGRES|PG|DB|HOST' || true
 
       - name: Wait for Postgres, reset public schema and seed database
         env:
           PGPASSWORD: csrpass
-          PGHOST: postgres
+          PGHOST: localhost
           PGPORT: 5432
         run: |
           echo "Using PGHOST=$PGHOST PGPORT=$PGPORT"
@@ -95,12 +97,12 @@ PY
           echo "Resetting public schema"
           psql -h "$PGHOST" -p "$PGPORT" -U csruser -d csrdb -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 
-          echo "Seeding DB from seed_data.sql (non-fatal errors may be ignored)"
-          psql -h "$PGHOST" -p "$PGPORT" -U csruser -d csrdb -f seed_data.sql || true
+          echo "Seeding DB from seed_db.sql (non-fatal errors may be ignored)"
+          psql -h "$PGHOST" -p "$PGPORT" -U csruser -d csrdb -f seed_db.sql || true
 
       - name: Run Flask import check (smoke test)
         env:
-          DB_HOST: postgres
+          DB_HOST: localhost
           DB_PORT: 5432
           DB_USER: csruser
           DB_PASS: csrpass
