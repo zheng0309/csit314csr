@@ -100,7 +100,7 @@ jobs:
           echo "Seeding DB from seed_db.sql (non-fatal errors may be ignored)"
           psql -h "$PGHOST" -p "$PGPORT" -U csruser -d csrdb -f seed_db.sql || true
 
-      - name: Run Flask import check (smoke test)
+      - name: Run Flask tests
         env:
           DB_HOST: localhost
           DB_PORT: 5432
@@ -108,8 +108,9 @@ jobs:
           DB_PASS: csrpass
           DB_NAME: csrdb
           SECRET_KEY: testing-secret
+          FLASK_ENV: testing
         run: |
-          python -m pytest -q
+          python -m pytest tests/ -v --tb=short
 
   frontend-test:
     name: Frontend tests & build
